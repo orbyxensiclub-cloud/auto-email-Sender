@@ -144,31 +144,22 @@ export default function HomePage() {
         setEventDetails(defaultEventDetails);
       }
 
+      // Fast optimistic initial load from localStorage if available
       const savedLeads = localStorage.getItem('outreach_cached_leads');
       if (savedLeads) {
         try {
           const parsed = JSON.parse(savedLeads);
-          const hasEnsi = parsed.some((l: any) => l.category === 'ensi');
-          const hasFoodInFormation = parsed.some(
-            (l: any) => l.category === 'formation' && (l.name?.toLowerCase().includes('chahia') || l.name?.toLowerCase().includes('elmazraa'))
-          );
-          const hasValidFormation = parsed.some(
-            (l: any) => l.category === 'formation' && (l.name?.toLowerCase().includes('inset') || l.name?.toLowerCase().includes('inp') || l.name?.toLowerCase().includes('gomycode'))
-          );
-
-          if (Array.isArray(parsed) && parsed.length > 0 && hasEnsi && !hasFoodInFormation && hasValidFormation) {
+          if (Array.isArray(parsed) && parsed.length > 0) {
             setLeads(parsed.map((l: CompanyLead) => ({
               ...l,
               generatedBody: stripTrailingTextSig(l.generatedBody),
             })));
-            return;
-          } else {
-            localStorage.removeItem('outreach_cached_leads');
           }
         } catch {}
       }
 
-      loadSheetData(savedSheet || DEFAULT_SHEET_URL);
+      // Authoritative load from server JSON database (shared across all browsers/sessions)
+      loadSavedLeadsFromBackend(savedSheet || DEFAULT_SHEET_URL);
     }
   }, []);
 
@@ -189,6 +180,30 @@ export default function HomePage() {
       return () => clearTimeout(timer);
     }
   }, [leads]);
+
+  // Load authoritative saved leads & emails directly from backend
+  const loadSavedLeadsFromBackend = async (sheetFallbackUrl: string) => {
+    try {
+      const res = await fetch('/api/leads');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.leads) && data.leads.length > 0) {
+          const cleanLeads = data.leads.map((l: CompanyLead) => ({
+            ...l,
+            generatedBody: stripTrailingTextSig(l.generatedBody),
+          }));
+          setLeads(cleanLeads);
+          localStorage.setItem('outreach_cached_leads', JSON.stringify(cleanLeads));
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Could not load saved leads from backend storage:', err);
+    }
+
+    // Only if backend has no saved leads at all, seed from Google Sheet
+    loadSheetData(sheetFallbackUrl);
+  };
 
   // Automated background scheduler ticker (runs every 10 seconds)
   useEffect(() => {
@@ -256,47 +271,76 @@ export default function HomePage() {
         throw new Error(data.error || 'Erreur lors de la lecture du Google Sheet');
       }
 
-      // Fetch any existing generated / sent leads from JSON storage
+      // Fetch existing leads and generated emails from backend JSON storage
       let savedJsonLeads: CompanyLead[] = [];
+      let savedGenerated: any[] = [];
       try {
         const jsonRes = await fetch('/api/leads');
         if (jsonRes.ok) {
           const jsonData = await jsonRes.json();
-          if (Array.isArray(jsonData.leads)) {
-            savedJsonLeads = jsonData.leads;
-          }
+          if (Array.isArray(jsonData.leads)) savedJsonLeads = jsonData.leads;
+          if (Array.isArray(jsonData.generated)) savedGenerated = jsonData.generated;
         }
       } catch {}
 
       setLeads((prev) => {
         const pool = prev.length > 0 ? prev : savedJsonLeads;
-        if (pool.length === 0) return data.leads;
 
-        const map = new Map<string, CompanyLead>(
-          pool.map((p) => [`${p.category}:${p.name.toLowerCase().trim()}`, p])
-        );
-        return data.leads.map((newLead: CompanyLead) => {
+        // Build lookup maps from existing leads and from generated emails
+        const existingMap = new Map<string, CompanyLead>();
+        for (const l of pool) {
+          if (l.id) existingMap.set(l.id, l);
+          existingMap.set(`${l.category}:${l.name.toLowerCase().trim()}`, l);
+          if (l.email) existingMap.set(l.email.toLowerCase().trim(), l);
+        }
+
+        const genMap = new Map<string, any>();
+        for (const g of savedGenerated) {
+          if (g.leadId) genMap.set(g.leadId, g);
+          genMap.set(`${g.category}:${g.companyName.toLowerCase().trim()}`, g);
+          if (g.to) genMap.set(g.to.toLowerCase().trim(), g);
+        }
+
+        const sheetKeys = new Set<string>();
+
+        const mergedLeads = data.leads.map((newLead: CompanyLead) => {
           const key = `${newLead.category}:${newLead.name.toLowerCase().trim()}`;
-          const existing = map.get(key);
-          if (existing && existing.generatedSubject) {
+          sheetKeys.add(key);
+          sheetKeys.add(newLead.id);
+          if (newLead.email) sheetKeys.add(newLead.email.toLowerCase().trim());
+
+          const existing = existingMap.get(key) || (newLead.email ? existingMap.get(newLead.email.toLowerCase().trim()) : undefined);
+          const gen = genMap.get(key) || (newLead.email ? genMap.get(newLead.email.toLowerCase().trim()) : undefined);
+
+          if (existing || gen) {
             return {
               ...newLead,
-              generatedSubject: existing.generatedSubject,
-              generatedBody: stripTrailingTextSig(existing.generatedBody),
-              status: existing.status,
-              approvals: existing.approvals,
-              scheduledTime: existing.scheduledTime,
-              sentAt: existing.sentAt,
-              chatHistory: existing.chatHistory,
+              generatedSubject: existing?.generatedSubject || gen?.subject,
+              generatedBody: stripTrailingTextSig(existing?.generatedBody || gen?.body),
+              status: existing?.status || gen?.status || 'draft',
+              approvals: existing?.approvals,
+              scheduledTime: existing?.scheduledTime,
+              sentAt: existing?.sentAt,
+              chatHistory: existing?.chatHistory || [],
             };
           }
           return newLead;
         });
+
+        // Retain custom leads that exist in pool but not in sheet (like manual test leads)
+        for (const p of pool) {
+          const pKey = `${p.category}:${p.name.toLowerCase().trim()}`;
+          if (!sheetKeys.has(pKey) && !sheetKeys.has(p.id)) {
+            mergedLeads.push(p);
+          }
+        }
+
+        return mergedLeads;
       });
 
       showToast(
         'Données Google Sheet synchronisées',
-        `${data.leads.length} contacts chargés à travers les 4 catégories.`,
+        `${data.leads.length} contacts chargés et e-mails générés préservés.`,
         'success'
       );
     } catch (err: any) {
@@ -962,6 +1006,11 @@ export default function HomePage() {
         onUpdateLead={(updated) => {
           setSelectedLead(updated);
           setLeads((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+          fetch('/api/leads', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lead: updated }),
+          }).catch((err) => console.error('Failed to sync updated lead to backend:', err));
         }}
         onSendNow={handleSendNow}
         onScheduleSend={handleScheduleSend}

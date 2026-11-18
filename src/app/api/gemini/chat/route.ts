@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildChatRefinementPrompt, callGemini, defaultEventDetails } from '@/lib/gemini';
 import { CompanyLead } from '@/lib/sheets';
+import { saveLeadGeneratedEmail } from '@/lib/json-storage';
 
 export async function POST(req: NextRequest) {
   try {
@@ -47,12 +48,31 @@ export async function POST(req: NextRequest) {
     const targetModel = model || 'gemini-3.5-flash-lite';
     const result = await callGemini(effectiveApiKey, prompt, systemInstruction, true, targetModel);
 
+    const updatedSubject = result.subject || currentSubject;
+    const updatedBody = result.body || currentBody;
+
+    // Persist refined email to storage
+    try {
+      saveLeadGeneratedEmail({
+        leadId: lead.id,
+        companyName: lead.name,
+        category: lead.category,
+        to: lead.email || '',
+        subject: updatedSubject,
+        body: updatedBody,
+        model: targetModel,
+        status: lead.status === 'idle' ? 'draft' : lead.status,
+      });
+    } catch (saveErr) {
+      console.error('Failed to update refined email in JSON storage:', saveErr);
+    }
+
     return NextResponse.json({
       success: true,
       model: targetModel,
       reply: result.reply || "Voici les modifications apportées à l'e-mail.",
-      subject: result.subject || currentSubject,
-      body: result.body || currentBody,
+      subject: updatedSubject,
+      body: updatedBody,
     });
   } catch (error: any) {
     console.error('Error in Gemini chat refinement:', error);

@@ -3,7 +3,7 @@ import {
   getSavedLeads,
   saveLeadsToJSON,
   getGeneratedEmails,
-  saveGeneratedEmail,
+  updateSingleLead,
   saveBatchGeneratedEmails,
   getSentEmails,
   GeneratedEmailRecord,
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       const incomingLeads: CompanyLead[] = body.leads;
       saveLeadsToJSON(incomingLeads);
 
-      // Also extract and sync any leads that have generated bodies into generated_emails.json
+      // Extract and sync any leads that have generated bodies into generated_emails.json
       const generatedRecords: GeneratedEmailRecord[] = incomingLeads
         .filter((l) => l.generatedBody && l.generatedSubject)
         .map((l) => ({
@@ -73,33 +73,7 @@ export async function POST(req: NextRequest) {
     // 2. Single lead save / update
     if (body.lead) {
       const lead: CompanyLead = body.lead;
-      const current = getSavedLeads();
-      const idx = current.findIndex((l) => l.id === lead.id);
-
-      let updated: CompanyLead[];
-      if (idx !== -1) {
-        updated = [...current];
-        updated[idx] = lead;
-      } else {
-        updated = [lead, ...current];
-      }
-
-      saveLeadsToJSON(updated);
-
-      if (lead.generatedSubject && lead.generatedBody) {
-        saveGeneratedEmail({
-          id: `gen-${lead.id}`,
-          leadId: lead.id,
-          companyName: lead.name,
-          category: lead.category,
-          to: lead.email || '',
-          subject: lead.generatedSubject,
-          body: lead.generatedBody,
-          model: 'gemini-3.5-flash-lite',
-          status: lead.status,
-          generatedAt: new Date().toISOString(),
-        });
-      }
+      updateSingleLead(lead);
 
       return NextResponse.json({
         success: true,
