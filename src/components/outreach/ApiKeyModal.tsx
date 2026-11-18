@@ -43,7 +43,7 @@ export default function ApiKeyModal({ isOpen, onClose, apiKey, smtpPass = '', on
 
       if (!res.ok) {
         res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${keyInput.trim()}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${keyInput.trim()}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

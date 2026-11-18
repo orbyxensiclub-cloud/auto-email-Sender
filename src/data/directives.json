@@ -1,6 +1,12 @@
 {
-  "updatedAt": "2026-11-18T14:06:00.000Z",
+  "updatedAt": "2026-11-18T14:27:00.000Z",
   "notes": [
+    {
+      "id": "dir-template",
+      "text": "Respecter scrupuleusement la structure du modèle officiel ORBYX ML Challenge 2.0 (introduction Jasser Ben Jomaa, 60 à 80 élèves-ingénieurs, les 5 piliers 'Ce que l'entreprise peut y gagner', formules de partenariat et proposition d'échange de 15 minutes, se terminant par 'Bien cordialement,')",
+      "enabled": true,
+      "createdAt": "2026-11-18T14:25:00.000Z"
+    },
     {
       "id": "dir-1",
       "text": "Toujours vouvoyer et adopter une politesse d'élite",

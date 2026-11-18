@@ -451,7 +451,10 @@ export default function HomePage() {
     }
 
     const reviewer = currentReviewer.trim();
-    const isAlreadyAccepted = lead.status === 'accepted' || (lead.approvals && lead.approvals.length > 0);
+    const currentInState = leads.find((l) => l.id === lead.id) || lead;
+    const isAlreadyAccepted =
+      currentInState.status === 'accepted' ||
+      (currentInState.approvals && currentInState.approvals.length > 0);
 
     let updatedApprovals: ApprovalRecord[] = [];
     if (!isAlreadyAccepted) {

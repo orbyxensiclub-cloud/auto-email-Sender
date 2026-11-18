@@ -13,9 +13,19 @@ export interface DirectivesData {
   notes: DirectiveNote[];
 }
 
-const DIRECTIVES_FILE_PATH = path.join(process.cwd(), 'src', 'data', 'directives.json');
+const LOCAL_FILE_PATH = path.join(process.cwd(), 'src', 'data', 'directives.json');
+const TMP_FILE_PATH = path.join('/tmp', 'directives.json');
+
+// In-memory fallback cache for serverless environments
+let memoryCache: DirectivesData | null = null;
 
 const DEFAULT_NOTES: DirectiveNote[] = [
+  {
+    id: 'dir-template',
+    text: "Respecter scrupuleusement la structure du modèle officiel ORBYX ML Challenge 2.0 (introduction Jasser Ben Jomaa, 60 à 80 élèves-ingénieurs, les 5 piliers 'Ce que l'entreprise peut y gagner', formules de partenariat et proposition d'échange de 15 minutes, se terminant par 'Bien cordialement,')",
+    enabled: true,
+    createdAt: new Date().toISOString(),
+  },
   {
     id: 'dir-1',
     text: "Toujours vouvoyer et adopter une politesse d'élite",
@@ -60,13 +70,6 @@ const DEFAULT_NOTES: DirectiveNote[] = [
   },
 ];
 
-export function getDirectivesFilePath(): string {
-  return DIRECTIVES_FILE_PATH;
-}
-
-/**
- * Format active notes into a bulleted string for LLM system prompt / globalDirectives
- */
 export function formatDirectivesText(notes: DirectiveNote[]): string {
   if (!Array.isArray(notes)) return '';
   return notes
@@ -76,51 +79,76 @@ export function formatDirectivesText(notes: DirectiveNote[]): string {
 }
 
 /**
- * Read directives from JSON file. Returns default notes if file does not exist.
+ * Read directives from JSON file.
+ * Handles read-only serverless filesystems (e.g. Vercel /var/task) by checking /tmp or bundled files.
  */
 export function readDirectivesFromFile(): DirectivesData {
-  try {
-    if (!fs.existsSync(DIRECTIVES_FILE_PATH)) {
-      const initialData: DirectivesData = {
-        updatedAt: new Date().toISOString(),
-        notes: DEFAULT_NOTES,
-      };
-      saveDirectivesToFile(initialData.notes);
-      return initialData;
-    }
-
-    const content = fs.readFileSync(DIRECTIVES_FILE_PATH, 'utf-8');
-    const parsed = JSON.parse(content);
-    if (!parsed || !Array.isArray(parsed.notes)) {
-      return {
-        updatedAt: new Date().toISOString(),
-        notes: DEFAULT_NOTES,
-      };
-    }
-    return parsed;
-  } catch (error) {
-    console.error('Error reading directives JSON file:', error);
-    return {
-      updatedAt: new Date().toISOString(),
-      notes: DEFAULT_NOTES,
-    };
+  // 1. Check in-memory cache
+  if (memoryCache && Array.isArray(memoryCache.notes)) {
+    return memoryCache;
   }
+
+  // 2. Check /tmp on serverless environments
+  try {
+    if (fs.existsSync(TMP_FILE_PATH)) {
+      const content = fs.readFileSync(TMP_FILE_PATH, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (parsed && Array.isArray(parsed.notes)) {
+        memoryCache = parsed;
+        return parsed;
+      }
+    }
+  } catch {}
+
+  // 3. Check bundled local file
+  try {
+    if (fs.existsSync(LOCAL_FILE_PATH)) {
+      const content = fs.readFileSync(LOCAL_FILE_PATH, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (parsed && Array.isArray(parsed.notes)) {
+        memoryCache = parsed;
+        return parsed;
+      }
+    }
+  } catch {}
+
+  // 4. Fallback to default notes
+  const initialData: DirectivesData = {
+    updatedAt: new Date().toISOString(),
+    notes: DEFAULT_NOTES,
+  };
+  memoryCache = initialData;
+  return initialData;
 }
 
 /**
  * Save directives array to JSON file.
+ * Handles read-only serverless filesystems (EROFS) gracefully by falling back to /tmp and memory cache.
  */
 export function saveDirectivesToFile(notes: DirectiveNote[]): DirectivesData {
-  const dir = path.dirname(DIRECTIVES_FILE_PATH);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-
   const data: DirectivesData = {
     updatedAt: new Date().toISOString(),
     notes,
   };
 
-  fs.writeFileSync(DIRECTIVES_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
+  memoryCache = data;
+
+  // Try writing to local project path (works in local development)
+  try {
+    const dir = path.dirname(LOCAL_FILE_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(LOCAL_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (err: any) {
+    // Expected on Vercel / Lambda read-only filesystems (EROFS)
+    // Silently fall back to /tmp
+  }
+
+  // Also write to /tmp (writable in serverless environments like Vercel and AWS Lambda)
+  try {
+    fs.writeFileSync(TMP_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
+  } catch {}
+
   return data;
 }

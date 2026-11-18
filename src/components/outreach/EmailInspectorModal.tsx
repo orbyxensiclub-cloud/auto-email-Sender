@@ -120,30 +120,13 @@ export default function EmailInspectorModal({
     });
   };
 
-  // 1-person approval rule
+  // 1-person approval rule: delegate toggle to onAccept with latest edited fields
   const handleAcceptClick = () => {
-    const reviewer = currentReviewer?.trim() || 'Examinateur';
-    const isAlreadyAccepted = lead.status === 'accepted' || (lead.approvals && lead.approvals.length > 0);
-
-    let updatedApprovals = isAlreadyAccepted
-      ? []
-      : [
-          {
-            reviewerName: reviewer,
-            timestamp: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-          },
-        ];
-
-    const isFullyApproved = updatedApprovals.length >= 1;
-    const newStatus = isFullyApproved ? 'accepted' : 'draft';
-
     onAccept({
       ...lead,
       generatedSubject: subject,
       generatedBody: body,
       email: recipient,
-      approvals: updatedApprovals,
-      status: newStatus,
     });
   };
 

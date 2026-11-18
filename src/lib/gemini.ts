@@ -39,10 +39,12 @@ export async function callGemini(
   modelName: string = DEFAULT_GEMINI_MODEL
 ): Promise<any> {
   const models = [
-    modelName,
+    modelName || 'gemini-3.5-flash-lite',
     'gemini-3.5-flash-lite',
-    'gemini-2.5-flash-lite',
-    'gemini-2.5-flash',
+    'gemini-3.8-flash',
+    'gemini-3.5-flash',
+    'gemini-flash-lite-latest',
+    'gemini-flash-latest',
   ].filter((m, idx, arr) => arr.indexOf(m) === idx);
 
   let lastError: any = null;
