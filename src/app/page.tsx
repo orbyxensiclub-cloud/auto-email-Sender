@@ -172,10 +172,21 @@ export default function HomePage() {
     }
   }, []);
 
-  // Sync leads to localStorage
+  // Sync leads to localStorage and backend JSON storage (src/data/leads.json)
   useEffect(() => {
     if (leads.length > 0) {
       localStorage.setItem('outreach_cached_leads', JSON.stringify(leads));
+
+      // Debounced sync to /api/leads to update src/data/leads.json and src/data/generated_emails.json
+      const timer = setTimeout(() => {
+        fetch('/api/leads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ leads }),
+        }).catch((err) => console.error('Failed to sync leads to JSON storage:', err));
+      }, 1000);
+
+      return () => clearTimeout(timer);
     }
   }, [leads]);
 
@@ -245,10 +256,24 @@ export default function HomePage() {
         throw new Error(data.error || 'Erreur lors de la lecture du Google Sheet');
       }
 
+      // Fetch any existing generated / sent leads from JSON storage
+      let savedJsonLeads: CompanyLead[] = [];
+      try {
+        const jsonRes = await fetch('/api/leads');
+        if (jsonRes.ok) {
+          const jsonData = await jsonRes.json();
+          if (Array.isArray(jsonData.leads)) {
+            savedJsonLeads = jsonData.leads;
+          }
+        }
+      } catch {}
+
       setLeads((prev) => {
-        if (prev.length === 0) return data.leads;
+        const pool = prev.length > 0 ? prev : savedJsonLeads;
+        if (pool.length === 0) return data.leads;
+
         const map = new Map<string, CompanyLead>(
-          prev.map((p) => [`${p.category}:${p.name.toLowerCase().trim()}`, p])
+          pool.map((p) => [`${p.category}:${p.name.toLowerCase().trim()}`, p])
         );
         return data.leads.map((newLead: CompanyLead) => {
           const key = `${newLead.category}:${newLead.name.toLowerCase().trim()}`;

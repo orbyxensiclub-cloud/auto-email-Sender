@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildEmailPrompt, callGemini, defaultEventDetails } from '@/lib/gemini';
 import { CompanyLead } from '@/lib/sheets';
+import { saveGeneratedEmail } from '@/lib/json-storage';
 
 export async function POST(req: NextRequest) {
   try {
@@ -37,6 +38,24 @@ export async function POST(req: NextRequest) {
 
     if (!generated.subject || !generated.body) {
       throw new Error('Gemini did not return both subject and body');
+    }
+
+    // Persist to src/data/generated_emails.json
+    try {
+      saveGeneratedEmail({
+        id: `gen-${lead.id}`,
+        leadId: lead.id,
+        companyName: lead.name,
+        category: lead.category,
+        to: lead.email || '',
+        subject: generated.subject,
+        body: generated.body,
+        model: targetModel,
+        status: 'draft',
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (saveErr) {
+      console.error('Failed to log generated email to JSON storage:', saveErr);
     }
 
     return NextResponse.json({

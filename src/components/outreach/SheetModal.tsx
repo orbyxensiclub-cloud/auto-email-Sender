@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Database, X, ExternalLink } from 'lucide-react';
+import { FileSpreadsheet, X, ExternalLink } from 'lucide-react';
 
 interface SheetModalProps {
   isOpen: boolean;
@@ -28,7 +28,7 @@ export default function SheetModal({ isOpen, onClose, currentUrl, onSave }: Shee
       <div className="w-full max-w-xl bg-[var(--white)] border-4 border-[var(--ink)] shadow-[8px_8px_0_var(--ink)] p-6 text-[var(--ink)]">
         <div className="flex items-center justify-between pb-4 border-b-2 border-[var(--ink)]">
           <div className="flex items-center gap-3">
-            <Database className="w-6 h-6 text-[var(--blue)] stroke-[2.5]" />
+            <FileSpreadsheet className="w-6 h-6 text-[var(--blue)] stroke-[2.5]" />
             <div>
               <h3 className="text-lg font-black uppercase tracking-tight">SOURCE GOOGLE SPREADSHEET</h3>
               <p className="text-xs font-mono text-[var(--grey)] uppercase">FLUX DE DONNÉES EN DIRECT</p>

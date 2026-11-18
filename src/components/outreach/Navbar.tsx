@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Sparkles, Key, Calendar, Database, RefreshCw, ExternalLink, MessageSquareText, UserCheck } from 'lucide-react';
+import { Sparkles, Key, Calendar, FileSpreadsheet, RefreshCw, ExternalLink, MessageSquareText, UserCheck } from 'lucide-react';
 
 interface NavbarProps {
   sheetUrl: string;
@@ -64,7 +64,7 @@ export default function Navbar({
             className="btn-transit !py-2 !text-xs !bg-[var(--blue)] !text-[var(--white)] !border-[var(--white)] hover:!bg-[var(--yellow)] hover:!text-[var(--ink)] hover:!border-[var(--yellow)]"
             title="Inspecter le lien Google Sheet"
           >
-            <Database className="w-3.5 h-3.5 text-[var(--yellow)]" />
+            <FileSpreadsheet className="w-3.5 h-3.5 text-[var(--yellow)]" />
             <span>Google Sheet</span>
             <ExternalLink className="w-3 h-3 opacity-70" />
           </button>

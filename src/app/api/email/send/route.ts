@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import { getSignatureHtml, getSignatureAttachments } from '@/lib/signature';
+import { saveSentEmail } from '@/lib/json-storage';
 
 export async function POST(req: NextRequest) {
   try {
@@ -100,6 +101,22 @@ export async function POST(req: NextRequest) {
     });
 
     console.log(`[Email Sent Successfully] Message ID: ${info.messageId} to ${to}`);
+
+    // Persist sent email to src/data/sent_emails.json
+    try {
+      saveSentEmail({
+        id: `sent-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        to,
+        sender: `"${effectiveSenderName}" <${smtpUser}>`,
+        replyTo: effectiveReplyTo,
+        subject,
+        body: emailBody,
+        messageId: info.messageId,
+        sentAt: new Date().toISOString(),
+      });
+    } catch (saveErr) {
+      console.error('Failed to log sent email to JSON file:', saveErr);
+    }
 
     return NextResponse.json({
       success: true,

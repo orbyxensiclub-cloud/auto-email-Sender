@@ -90,8 +90,8 @@ export function readDirectivesFromFile(): DirectivesData {
 
   // 2. Check /tmp on serverless environments
   try {
-    if (fs.existsSync(TMP_FILE_PATH)) {
-      const content = fs.readFileSync(TMP_FILE_PATH, 'utf-8');
+    if (fs.existsSync(/*turbopackIgnore: true*/ TMP_FILE_PATH)) {
+      const content = fs.readFileSync(/*turbopackIgnore: true*/ TMP_FILE_PATH, 'utf-8');
       const parsed = JSON.parse(content);
       if (parsed && Array.isArray(parsed.notes)) {
         memoryCache = parsed;
@@ -102,8 +102,8 @@ export function readDirectivesFromFile(): DirectivesData {
 
   // 3. Check bundled local file
   try {
-    if (fs.existsSync(LOCAL_FILE_PATH)) {
-      const content = fs.readFileSync(LOCAL_FILE_PATH, 'utf-8');
+    if (fs.existsSync(/*turbopackIgnore: true*/ LOCAL_FILE_PATH)) {
+      const content = fs.readFileSync(/*turbopackIgnore: true*/ LOCAL_FILE_PATH, 'utf-8');
       const parsed = JSON.parse(content);
       if (parsed && Array.isArray(parsed.notes)) {
         memoryCache = parsed;
@@ -136,10 +136,10 @@ export function saveDirectivesToFile(notes: DirectiveNote[]): DirectivesData {
   // Try writing to local project path (works in local development)
   try {
     const dir = path.dirname(LOCAL_FILE_PATH);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+    if (!fs.existsSync(/*turbopackIgnore: true*/ dir)) {
+      fs.mkdirSync(/*turbopackIgnore: true*/ dir, { recursive: true });
     }
-    fs.writeFileSync(LOCAL_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
+    fs.writeFileSync(/*turbopackIgnore: true*/ LOCAL_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
   } catch (err: any) {
     // Expected on Vercel / Lambda read-only filesystems (EROFS)
     // Silently fall back to /tmp
@@ -147,7 +147,7 @@ export function saveDirectivesToFile(notes: DirectiveNote[]): DirectivesData {
 
   // Also write to /tmp (writable in serverless environments like Vercel and AWS Lambda)
   try {
-    fs.writeFileSync(TMP_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
+    fs.writeFileSync(/*turbopackIgnore: true*/ TMP_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
   } catch {}
 
   return data;
