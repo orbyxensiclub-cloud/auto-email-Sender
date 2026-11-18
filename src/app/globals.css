@@ -1,0 +1,153 @@
+@import "tailwindcss";
+
+:root {
+  --ground: #F2F3EF;
+  --ink: #14161A;
+  --blue: #1B3A8C;
+  --yellow: #F4B400;
+  --grey: #8C9096;
+  --white: #FFFFFF;
+  --on-blue: #DCE3F5;
+
+  --sans: 'Overpass', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --mono: 'Overpass Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scrollbar-color: var(--ink) var(--ground);
+  background: var(--ground);
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  caret-color: var(--blue);
+}
+
+::selection {
+  background: var(--yellow);
+  color: var(--ink);
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--ground);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--ink);
+  border: 2px solid var(--ground);
+}
+
+:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.band :focus-visible,
+.dark :focus-visible {
+  outline-color: var(--yellow);
+}
+
+code, pre, .mono {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Enamel Band */
+.band {
+  background: var(--blue);
+  color: var(--white);
+}
+
+.band ::selection {
+  background: var(--yellow);
+  color: var(--ink);
+}
+
+/* Industrial Transit Buttons */
+.btn-transit {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--sans);
+  font-weight: 800;
+  font-size: 13px;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 10px 14px;
+  border: 2px solid currentColor;
+  text-decoration: none;
+  cursor: pointer;
+  background: var(--white);
+  color: var(--blue);
+  border-color: var(--white);
+  transition: background-color 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.btn-transit:hover {
+  background: var(--yellow);
+  border-color: var(--yellow);
+  color: var(--ink);
+}
+
+.btn-transit:active {
+  background: var(--ink);
+  color: var(--yellow);
+  border-color: var(--ink);
+}
+
+.btn-transit.ink {
+  background: var(--ink);
+  color: var(--white);
+  border-color: var(--ink);
+}
+
+.btn-transit.ink:hover {
+  background: var(--yellow);
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.btn-transit.yellow {
+  background: var(--yellow);
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.btn-transit.yellow:hover {
+  background: var(--ink);
+  color: var(--yellow);
+}
+
+/* Hot Tag / Alert Pill */
+.tag-hot {
+  background: var(--yellow);
+  color: var(--ink);
+  padding: 2px 6px;
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 11px;
+  box-shadow: 0 0 0 2px var(--ink);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
