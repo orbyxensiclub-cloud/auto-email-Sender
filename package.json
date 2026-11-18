@@ -9,13 +9,10 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^7.10.1",
-    "@prisma/client": "^7.10.1",
     "gray-matter": "^4.0.3",
     "lucide-react": "^1.73.0",
     "next": "16.4.6",
     "nodemailer": "^10.6.0",
-    "pg": "^8.23.1",
     "prismjs": "^1.30.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
@@ -27,13 +24,11 @@
     "@tailwindcss/turbopack": "4.3.3",
     "@types/node": "^20",
     "@types/nodemailer": "^8.0.2",
-    "@types/pg": "^8.23.1",
     "@types/prismjs": "^1.26.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
-    "prisma": "^7.10.1",
     "tailwindcss": "4.3.3",
     "typescript": "^5"
   }

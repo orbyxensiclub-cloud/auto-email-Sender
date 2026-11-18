@@ -111,6 +111,17 @@ export default function HomePage() {
       const savedDirectives = localStorage.getItem('outreach_global_directives');
       if (savedDirectives) setGlobalDirectives(savedDirectives);
 
+      // Load latest directives from JSON file
+      fetch('/api/directives')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.combinedText !== undefined) {
+            setGlobalDirectives(data.combinedText);
+            localStorage.setItem('outreach_global_directives', data.combinedText);
+          }
+        })
+        .catch((err) => console.error('Failed to load directives from JSON:', err));
+
       const savedEvent = localStorage.getItem('outreach_event_details');
       if (savedEvent) {
         try {
@@ -296,7 +307,7 @@ export default function HomePage() {
   const handleSaveDirectives = (newDirectives: string) => {
     setGlobalDirectives(newDirectives);
     localStorage.setItem('outreach_global_directives', newDirectives);
-    showToast('Directives enregistrées', 'Gemini prendra en compte ces consignes dans toutes les rédactions.', 'success');
+    showToast('Directives enregistrées', 'Consignes sauvegardées dans le fichier JSON et prises en compte par Gemini.', 'success');
   };
 
   const handleSaveSheetUrl = (newUrl: string) => {

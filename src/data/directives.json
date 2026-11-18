@@ -1,0 +1,47 @@
+{
+  "updatedAt": "2026-11-18T14:06:00.000Z",
+  "notes": [
+    {
+      "id": "dir-1",
+      "text": "Toujours vouvoyer et adopter une politesse d'élite",
+      "enabled": true,
+      "createdAt": "2026-11-18T14:00:00.000Z"
+    },
+    {
+      "id": "dir-2",
+      "text": "Insister fortement sur le recrutement des stagiaires PFE en informatique & IA",
+      "enabled": true,
+      "createdAt": "2026-11-18T14:01:00.000Z"
+    },
+    {
+      "id": "dir-3",
+      "text": "Garder l'e-mail percutant et en dessous de 150 mots",
+      "enabled": true,
+      "createdAt": "2026-11-18T14:02:00.000Z"
+    },
+    {
+      "id": "dir-4",
+      "text": "Proposer un court échange visio ou téléphonique de 15 minutes",
+      "enabled": true,
+      "createdAt": "2026-11-18T14:03:00.000Z"
+    },
+    {
+      "id": "dir-5",
+      "text": "Ne pas dévoiler les prix des packs de sponsoring dès le premier e-mail",
+      "enabled": true,
+      "createdAt": "2026-11-18T14:04:00.000Z"
+    },
+    {
+      "id": "dir-6",
+      "text": "Mentionner les 800+ élèves-ingénieurs et chercheurs de l'ENSI",
+      "enabled": true,
+      "createdAt": "2026-11-18T14:05:00.000Z"
+    },
+    {
+      "id": "dir-7",
+      "text": "Valoriser le logo de l'entreprise sur tous les supports média",
+      "enabled": true,
+      "createdAt": "2026-11-18T14:06:00.000Z"
+    }
+  ]
+}
