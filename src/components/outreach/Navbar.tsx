@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Sparkles, Key, Calendar, FileSpreadsheet, RefreshCw, ExternalLink, MessageSquareText, UserCheck, Paperclip } from 'lucide-react';
+import { Sparkles, Key, Calendar, FileSpreadsheet, RefreshCw, ExternalLink, MessageSquareText, UserCheck, Paperclip, Share2 } from 'lucide-react';
 
 interface NavbarProps {
   sheetUrl: string;
@@ -17,6 +17,7 @@ interface NavbarProps {
   onOpenReviewerModal: () => void;
   globalAttachmentsCount?: number;
   onOpenAttachmentsModal: () => void;
+  onOpenShareModal: () => void;
 }
 
 export default function Navbar({
@@ -33,6 +34,7 @@ export default function Navbar({
   onOpenReviewerModal,
   globalAttachmentsCount = 0,
   onOpenAttachmentsModal,
+  onOpenShareModal,
 }: NavbarProps) {
   return (
     <header className="band sticky top-0 z-40 w-full border-b-2 border-[var(--ink)] shadow-md">
@@ -130,6 +132,16 @@ export default function Navbar({
             <span className="truncate max-w-[130px]">
               {currentReviewer ? currentReviewer : 'Nom requérant'}
             </span>
+          </button>
+
+          {/* Share Session Button */}
+          <button
+            onClick={onOpenShareModal}
+            className="btn-transit !py-2 !text-xs !bg-[var(--yellow)] !text-[var(--ink)] !border-[var(--white)] hover:!bg-[var(--white)] hover:!text-[var(--ink)] font-black shadow-[2px_2px_0_var(--ink)]"
+            title="Partager le lien de la session avec votre équipe ou exporter la sauvegarde"
+          >
+            <Share2 className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span>Partager</span>
           </button>
 
           {/* Gemini API Key Button */}

@@ -12,6 +12,7 @@ import SheetModal from '@/components/outreach/SheetModal';
 import GlobalDirectivesModal from '@/components/outreach/GlobalDirectivesModal';
 import ReviewerModal from '@/components/outreach/ReviewerModal';
 import GlobalAttachmentsModal from '@/components/outreach/GlobalAttachmentsModal';
+import ShareSessionModal, { decodeSessionState } from '@/components/outreach/ShareSessionModal';
 import { CompanyLead, CategoryKey, ApprovalRecord } from '@/lib/sheets';
 import type { StoredAttachment } from '@/lib/email-attachments';
 import { EventDetails, defaultEventDetails } from '@/lib/gemini';
@@ -60,6 +61,7 @@ export default function HomePage() {
   const [isReviewerModalOpen, setIsReviewerModalOpen] = useState(false);
   const [isDirectivesModalOpen, setIsDirectivesModalOpen] = useState(false);
   const [isAttachmentsModalOpen, setIsAttachmentsModalOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [globalAttachments, setGlobalAttachments] = useState<StoredAttachment[]>([]);
 
   // Settings
@@ -159,16 +161,71 @@ export default function HomePage() {
         setEventDetails(defaultEventDetails);
       }
 
+      // Check if URL contains a shared session snapshot (#session=...)
+      let sharedSnapshot: any[] | null = null;
+      if (typeof window !== 'undefined' && window.location.hash.includes('session=')) {
+        try {
+          const hash = window.location.hash.substring(1);
+          const params = new URLSearchParams(hash);
+          const rawSession = params.get('session');
+          if (rawSession) {
+            const decoded = decodeSessionState(rawSession);
+            if (Array.isArray(decoded) && decoded.length > 0) {
+              sharedSnapshot = decoded;
+              window.history.replaceState(null, '', window.location.pathname + window.location.search);
+              showToast(
+                'Session synchronisée !',
+                `${decoded.length} e-mails générés / statuts importés depuis le lien partagé.`,
+                'success'
+              );
+            }
+          }
+        } catch (e) {
+          console.error('Error decoding hash session:', e);
+        }
+      }
+
       // Fast optimistic initial load from localStorage if available
       const savedLeads = localStorage.getItem('outreach_cached_leads');
-      if (savedLeads) {
+      if (savedLeads || sharedSnapshot) {
         try {
-          const parsed = JSON.parse(savedLeads);
+          let parsed: CompanyLead[] = savedLeads ? JSON.parse(savedLeads) : [];
+          if (sharedSnapshot && Array.isArray(sharedSnapshot)) {
+            const snapMap = new Map<string, any>();
+            for (const item of sharedSnapshot) {
+              if (item.id) snapMap.set(item.id, item);
+              if (item.name && item.cat) snapMap.set(`${item.cat}:${item.name.toLowerCase().trim()}`, item);
+            }
+
+            parsed = parsed.map((l) => {
+              const key = `${l.category}:${l.name.toLowerCase().trim()}`;
+              const match = snapMap.get(l.id) || snapMap.get(key);
+              if (match) {
+                return {
+                  ...l,
+                  generatedSubject: match.sub || match.generatedSubject || l.generatedSubject,
+                  generatedBody: stripTrailingTextSig(match.bod || match.generatedBody || l.generatedBody),
+                  status: match.st || match.status || l.status,
+                  approvals: match.app || match.approvals || l.approvals,
+                  refusedBy: match.ref || match.refusedBy || l.refusedBy,
+                  scheduledTime: match.sch || match.scheduledTime || l.scheduledTime,
+                  sentAt: match.snt || match.sentAt || l.sentAt,
+                  customAttachments: match.att || match.customAttachments || l.customAttachments,
+                  excludeGlobalAttachments: match.ex ?? match.excludeGlobalAttachments ?? l.excludeGlobalAttachments,
+                  chatHistory: match.chat || match.chatHistory || l.chatHistory || [],
+                };
+              }
+              return l;
+            });
+          }
+
           if (Array.isArray(parsed) && parsed.length > 0) {
-            setLeads(parsed.map((l: CompanyLead) => ({
+            const clean = parsed.map((l: CompanyLead) => ({
               ...l,
               generatedBody: stripTrailingTextSig(l.generatedBody),
-            })));
+            }));
+            setLeads(clean);
+            localStorage.setItem('outreach_cached_leads', JSON.stringify(clean));
           }
         } catch {}
       }
@@ -203,12 +260,55 @@ export default function HomePage() {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.leads) && data.leads.length > 0) {
-          const cleanLeads = data.leads.map((l: CompanyLead) => ({
-            ...l,
-            generatedBody: stripTrailingTextSig(l.generatedBody),
-          }));
-          setLeads(cleanLeads);
-          localStorage.setItem('outreach_cached_leads', JSON.stringify(cleanLeads));
+          setLeads((currentLeads) => {
+            // Find existing local leads in state or localStorage to NEVER overwrite generated data
+            const cachedStr = typeof window !== 'undefined' ? localStorage.getItem('outreach_cached_leads') : null;
+            let localList = currentLeads;
+            if ((!localList || localList.length === 0) && cachedStr) {
+              try {
+                localList = JSON.parse(cachedStr);
+              } catch {}
+            }
+
+            const localMap = new Map<string, CompanyLead>();
+            for (const l of (localList || [])) {
+              if (l.id) localMap.set(l.id, l);
+              localMap.set(`${l.category}:${l.name.toLowerCase().trim()}`, l);
+              if (l.email) localMap.set(l.email.toLowerCase().trim(), l);
+            }
+
+            const merged = data.leads.map((incoming: CompanyLead) => {
+              const key = `${incoming.category}:${incoming.name.toLowerCase().trim()}`;
+              const emailKey = incoming.email ? incoming.email.toLowerCase().trim() : '';
+              const local = localMap.get(incoming.id) || localMap.get(key) || (emailKey ? localMap.get(emailKey) : undefined);
+
+              if (local) {
+                const effectiveSubject = local.generatedSubject || incoming.generatedSubject;
+                const effectiveBody = stripTrailingTextSig(local.generatedBody || incoming.generatedBody);
+                const effectiveStatus = (local.status && local.status !== 'idle') ? local.status : (incoming.status || 'idle');
+
+                return {
+                  ...incoming,
+                  generatedSubject: effectiveSubject,
+                  generatedBody: effectiveBody,
+                  status: effectiveStatus,
+                  approvals: (local.approvals && local.approvals.length > 0) ? local.approvals : incoming.approvals,
+                  refusedBy: local.refusedBy || incoming.refusedBy,
+                  scheduledTime: local.scheduledTime || incoming.scheduledTime,
+                  sentAt: local.sentAt || incoming.sentAt,
+                  customAttachments: (local.customAttachments && local.customAttachments.length > 0) ? local.customAttachments : incoming.customAttachments,
+                  excludeGlobalAttachments: local.excludeGlobalAttachments ?? incoming.excludeGlobalAttachments,
+                  chatHistory: (local.chatHistory && local.chatHistory.length > 0) ? local.chatHistory : (incoming.chatHistory || []),
+                };
+              }
+              return incoming;
+            });
+
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('outreach_cached_leads', JSON.stringify(merged));
+            }
+            return merged;
+          });
           return;
         }
       }
@@ -336,8 +436,11 @@ export default function HomePage() {
               generatedBody: stripTrailingTextSig(existing?.generatedBody || gen?.body),
               status: existing?.status || gen?.status || 'draft',
               approvals: existing?.approvals,
+              refusedBy: existing?.refusedBy,
               scheduledTime: existing?.scheduledTime,
               sentAt: existing?.sentAt,
+              customAttachments: existing?.customAttachments,
+              excludeGlobalAttachments: existing?.excludeGlobalAttachments,
               chatHistory: existing?.chatHistory || [],
             };
           }
@@ -432,6 +535,56 @@ export default function HomePage() {
     setSheetUrl(newUrl);
     localStorage.setItem('outreach_sheet_url', newUrl);
     loadSheetData(newUrl);
+  };
+
+  const handleImportLeads = (importedLeads: CompanyLead[]) => {
+    if (!Array.isArray(importedLeads) || importedLeads.length === 0) return;
+
+    setLeads((prev) => {
+      const importMap = new Map<string, CompanyLead>();
+      for (const imp of importedLeads) {
+        if (imp.id) importMap.set(imp.id, imp);
+        importMap.set(`${imp.category}:${imp.name.toLowerCase().trim()}`, imp);
+        if (imp.email) importMap.set(imp.email.toLowerCase().trim(), imp);
+      }
+
+      const merged = prev.map((lead) => {
+        const key = `${lead.category}:${lead.name.toLowerCase().trim()}`;
+        const emailKey = lead.email ? lead.email.toLowerCase().trim() : '';
+        const match = importMap.get(lead.id) || importMap.get(key) || (emailKey ? importMap.get(emailKey) : undefined);
+
+        if (match) {
+          return {
+            ...lead,
+            generatedSubject: match.generatedSubject || lead.generatedSubject,
+            generatedBody: stripTrailingTextSig(match.generatedBody || lead.generatedBody),
+            status: (match.status && match.status !== 'idle') ? match.status : lead.status,
+            approvals: (match.approvals && match.approvals.length > 0) ? match.approvals : lead.approvals,
+            refusedBy: match.refusedBy || lead.refusedBy,
+            scheduledTime: match.scheduledTime || lead.scheduledTime,
+            sentAt: match.sentAt || lead.sentAt,
+            customAttachments: (match.customAttachments && match.customAttachments.length > 0) ? match.customAttachments : lead.customAttachments,
+            excludeGlobalAttachments: match.excludeGlobalAttachments ?? lead.excludeGlobalAttachments,
+            chatHistory: (match.chatHistory && match.chatHistory.length > 0) ? match.chatHistory : (lead.chatHistory || []),
+          };
+        }
+        return lead;
+      });
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('outreach_cached_leads', JSON.stringify(merged));
+      }
+
+      fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leads: merged }),
+      }).catch((e) => console.error('Failed to sync imported leads to backend:', e));
+
+      return merged;
+    });
+
+    showToast('Import réussi', `${importedLeads.length} leads synchronisés et enregistrés.`, 'success');
   };
 
   // Generate Email for single lead using ORBYX ML Challenge 2.0 template
@@ -1019,6 +1172,7 @@ export default function HomePage() {
         onOpenReviewerModal={() => setIsReviewerModalOpen(true)}
         globalAttachmentsCount={globalAttachments.filter((a) => a.enabled).length}
         onOpenAttachmentsModal={() => setIsAttachmentsModalOpen(true)}
+        onOpenShareModal={() => setIsShareModalOpen(true)}
       />
 
       {/* Main Workspace */}
@@ -1163,6 +1317,14 @@ export default function HomePage() {
         attachments={globalAttachments}
         onSave={handleSaveGlobalAttachments}
         onResetDefault={handleResetDefaultAttachments}
+      />
+
+      {/* Share / Backup Session Modal */}
+      <ShareSessionModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        leads={leads}
+        onImportLeads={handleImportLeads}
       />
     </div>
   );
