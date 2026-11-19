@@ -111,7 +111,7 @@ export function buildEmailPrompt(
   event: EventDetails,
   globalDirectives?: string
 ): { systemInstruction: string; prompt: string } {
-  const isSponsorship = lead.category === 'sponsorship' || lead.category === 'ensi';
+  const isSponsorship = lead.category === 'ensi';
   const isFormation = lead.category === 'formation';
   const isFood = lead.category === 'food';
 

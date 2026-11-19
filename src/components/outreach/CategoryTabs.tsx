@@ -13,7 +13,6 @@ interface CategoryTabsProps {
   onSearchChange: (q: string) => void;
   counts: {
     ensi: number;
-    sponsorship: number;
     formation: number;
     food: number;
   };
@@ -69,28 +68,20 @@ export default function CategoryTabs({
       source: 'ensi-sheet (gid:1620843151)',
     },
     {
-      id: 'sponsorship',
-      lineNum: 'L02',
-      title: 'ENTREPRISES & STARTUPS',
-      desc: 'Sponsoring ML Challenge 2.0 & recrutement ingénieurs IA',
-      count: counts.sponsorship,
-      source: 'Entreprises et Startups',
-    },
-    {
       id: 'formation',
-      lineNum: 'L03',
+      lineNum: 'L02',
       title: 'CENTRES DE FORMATION',
       desc: 'Partenariats académiques, vouchers & certifications',
       count: counts.formation,
-      source: 'Centre de Formation',
+      source: 'Centre de Formation (gid:1806652349)',
     },
     {
       id: 'food',
-      lineNum: 'L04',
+      lineNum: 'L03',
       title: 'SUBVENTION NATURE',
       desc: 'Traiteur, boissons, snacks & pause-café',
       count: counts.food,
-      source: 'Subvention Nature',
+      source: 'Subvention Nature (gid:0)',
     },
   ];
 
@@ -107,7 +98,7 @@ export default function CategoryTabs({
   return (
     <div className="space-y-4">
       {/* 4 Transit Lines Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {routes.map((route) => {
           const isActive = selectedCategory === route.id;
           return (

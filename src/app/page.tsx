@@ -11,7 +11,9 @@ import EventDetailsModal from '@/components/outreach/EventDetailsModal';
 import SheetModal from '@/components/outreach/SheetModal';
 import GlobalDirectivesModal from '@/components/outreach/GlobalDirectivesModal';
 import ReviewerModal from '@/components/outreach/ReviewerModal';
+import GlobalAttachmentsModal from '@/components/outreach/GlobalAttachmentsModal';
 import { CompanyLead, CategoryKey, ApprovalRecord } from '@/lib/sheets';
+import type { StoredAttachment } from '@/lib/email-attachments';
 import { EventDetails, defaultEventDetails } from '@/lib/gemini';
 import { Sparkles, AlertTriangle, CheckCircle } from 'lucide-react';
 
@@ -57,6 +59,8 @@ export default function HomePage() {
   const [isSheetModalOpen, setIsSheetModalOpen] = useState(false);
   const [isReviewerModalOpen, setIsReviewerModalOpen] = useState(false);
   const [isDirectivesModalOpen, setIsDirectivesModalOpen] = useState(false);
+  const [isAttachmentsModalOpen, setIsAttachmentsModalOpen] = useState(false);
+  const [globalAttachments, setGlobalAttachments] = useState<StoredAttachment[]>([]);
 
   // Settings
   const [apiKey, setApiKey] = useState('');
@@ -121,6 +125,16 @@ export default function HomePage() {
           }
         })
         .catch((err) => console.error('Failed to load directives from JSON:', err));
+
+      // Load global attachments from backend
+      fetch('/api/attachments')
+        .then((res) => res.json())
+        .then((data) => {
+          if (Array.isArray(data)) {
+            setGlobalAttachments(data);
+          }
+        })
+        .catch((err) => console.error('Failed to load global attachments:', err));
 
       const savedEvent = localStorage.getItem('outreach_event_details');
       if (savedEvent) {
@@ -377,6 +391,36 @@ export default function HomePage() {
     setGlobalDirectives(newDirectives);
     localStorage.setItem('outreach_global_directives', newDirectives);
     showToast('Directives enregistrées', 'Consignes sauvegardées dans le fichier JSON et prises en compte par Gemini.', 'success');
+  };
+
+  const handleSaveGlobalAttachments = async (attachments: StoredAttachment[]) => {
+    try {
+      const res = await fetch('/api/attachments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(attachments),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setGlobalAttachments(Array.isArray(data) ? data : attachments);
+      }
+    } catch (err) {
+      console.error('Failed to save global attachments:', err);
+    }
+  };
+
+  const handleResetDefaultAttachments = async () => {
+    try {
+      const res = await fetch('/api/attachments', { method: 'DELETE' });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setGlobalAttachments(data);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to reset attachments:', err);
+    }
   };
 
   const handleSaveSheetUrl = (newUrl: string) => {
@@ -868,7 +912,6 @@ export default function HomePage() {
   const categoryCounts = useMemo(() => {
     return {
       ensi: leads.filter((l) => l.category === 'ensi').length,
-      sponsorship: leads.filter((l) => l.category === 'sponsorship').length,
       formation: leads.filter((l) => l.category === 'formation').length,
       food: leads.filter((l) => l.category === 'food').length,
     };
@@ -923,6 +966,8 @@ export default function HomePage() {
         onOpenDirectivesModal={() => setIsDirectivesModalOpen(true)}
         currentReviewer={currentReviewer}
         onOpenReviewerModal={() => setIsReviewerModalOpen(true)}
+        globalAttachmentsCount={globalAttachments.filter((a) => a.enabled).length}
+        onOpenAttachmentsModal={() => setIsAttachmentsModalOpen(true)}
       />
 
       {/* Main Workspace */}
@@ -1002,6 +1047,7 @@ export default function HomePage() {
         apiKey={apiKey}
         currentReviewer={currentReviewer}
         globalDirectives={globalDirectives}
+        globalAttachments={globalAttachments}
         onOpenReviewerModal={() => setIsReviewerModalOpen(true)}
         onUpdateLead={(updated) => {
           setSelectedLead(updated);
@@ -1057,6 +1103,15 @@ export default function HomePage() {
         onClose={() => setIsSheetModalOpen(false)}
         currentUrl={sheetUrl}
         onSave={handleSaveSheetUrl}
+      />
+
+      {/* Global Attachments Modal */}
+      <GlobalAttachmentsModal
+        isOpen={isAttachmentsModalOpen}
+        onClose={() => setIsAttachmentsModalOpen(false)}
+        attachments={globalAttachments}
+        onSave={handleSaveGlobalAttachments}
+        onResetDefault={handleResetDefaultAttachments}
       />
     </div>
   );

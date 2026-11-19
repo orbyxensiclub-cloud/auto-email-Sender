@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Sparkles, Key, Calendar, FileSpreadsheet, RefreshCw, ExternalLink, MessageSquareText, UserCheck } from 'lucide-react';
+import { Sparkles, Key, Calendar, FileSpreadsheet, RefreshCw, ExternalLink, MessageSquareText, UserCheck, Paperclip } from 'lucide-react';
 
 interface NavbarProps {
   sheetUrl: string;
@@ -15,6 +15,8 @@ interface NavbarProps {
   onOpenDirectivesModal: () => void;
   currentReviewer: string;
   onOpenReviewerModal: () => void;
+  globalAttachmentsCount?: number;
+  onOpenAttachmentsModal: () => void;
 }
 
 export default function Navbar({
@@ -29,6 +31,8 @@ export default function Navbar({
   onOpenDirectivesModal,
   currentReviewer,
   onOpenReviewerModal,
+  globalAttachmentsCount = 0,
+  onOpenAttachmentsModal,
 }: NavbarProps) {
   return (
     <header className="band sticky top-0 z-40 w-full border-b-2 border-[var(--ink)] shadow-md">
@@ -86,6 +90,19 @@ export default function Navbar({
           >
             <Calendar className="w-3.5 h-3.5 text-[var(--yellow)]" />
             <span>Événement</span>
+          </button>
+
+          {/* Global Attachments Button */}
+          <button
+            onClick={onOpenAttachmentsModal}
+            className="btn-transit !py-2 !text-xs !bg-[var(--blue)] !text-[var(--white)] !border-[var(--white)] hover:!bg-[var(--yellow)] hover:!text-[var(--ink)] hover:!border-[var(--yellow)]"
+            title="Gérer les pièces jointes globales (dossier de sponsoring, etc.)"
+          >
+            <Paperclip className="w-3.5 h-3.5 text-[var(--yellow)]" />
+            <span>Pièces jointes</span>
+            <span className="bg-[var(--yellow)] text-[var(--ink)] text-[10px] font-mono px-1 py-0.2 font-black rounded-sm">
+              {globalAttachmentsCount}
+            </span>
           </button>
 
           {/* Global AI Directives Button */}

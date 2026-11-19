@@ -1,13 +1,25 @@
-export type CategoryKey = 'ensi' | 'sponsorship' | 'formation' | 'food';
+import dns from 'dns';
+dns.setDefaultResultOrder('ipv4first');
+
+export type CategoryKey = 'ensi' | 'formation' | 'food';
 
 export interface ApprovalRecord {
   reviewerName: string;
   timestamp: string;
 }
 
+export interface LeadAttachment {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  url: string;
+  path?: string;
+}
+
 export interface CompanyLead {
   id: string;
-  sourceSheet: 'ensi-sheet' | 'Entreprises et Startups' | 'Centre de Formation' | 'Subvention Nature';
+  sourceSheet: 'ensi-sheet' | 'Centre de Formation' | 'Subvention Nature';
   category: CategoryKey;
   name: string;
   email: string;
@@ -27,6 +39,10 @@ export interface CompanyLead {
   sentAt?: string;
   error?: string;
 
+  // Attachments specific to this lead
+  customAttachments?: LeadAttachment[];
+  excludeGlobalAttachments?: boolean;
+
   // AI Chat history for this specific email
   chatHistory: Array<{
     id: string;
@@ -43,7 +59,6 @@ export interface SheetParseResult {
     total: number;
     withEmail: number;
     ensi: number;
-    sponsorship: number;
     formation: number;
     food: number;
   };
@@ -111,9 +126,16 @@ export function parseCSV(csvText: string): string[][] {
  */
 function cleanEmail(rawEmail?: string): string {
   if (!rawEmail) return '';
-  const trimmed = rawEmail.replace(/["\r\n\t]/g, '').trim();
-  // Split on comma, slash, space, or semicolon if multiple
-  const parts = trimmed.split(/[,;\s/]+/);
+  let trimmed = rawEmail.replace(/["\r\n\t]/g, '').trim();
+
+  // Fix common TLD typos: ,tn -> .tn, ,com -> .com, ,com,tn -> .com.tn
+  trimmed = trimmed.replace(/,com,tn/gi, '.com.tn');
+  trimmed = trimmed.replace(/,tn/gi, '.tn');
+  trimmed = trimmed.replace(/,com/gi, '.com');
+  trimmed = trimmed.replace(/,net/gi, '.net');
+
+  // Split on semicolon, space, or slash if multiple
+  const parts = trimmed.split(/[;\s/]+/);
   for (const part of parts) {
     const clean = part.replace(/^mailto:/i, '').trim();
     if (clean.includes('@') && clean.includes('.')) {
@@ -149,7 +171,6 @@ export async function fetchSheetTab(sheetId: string, sheetTitle: string, gid?: s
 export async function fetchAllSheetLeads(sheetId: string): Promise<SheetParseResult> {
   const tabs = [
     { title: 'ensi-sheet', category: 'ensi' as CategoryKey, source: 'ensi-sheet' as const, gid: '1620843151' },
-    { title: 'Entreprises et Startups', category: 'sponsorship' as CategoryKey, source: 'Entreprises et Startups' as const, gid: '304578520' },
     { title: 'Centre de Formation', category: 'formation' as CategoryKey, source: 'Centre de Formation' as const, gid: '1806652349' },
     { title: 'Subvention Nature', category: 'food' as CategoryKey, source: 'Subvention Nature' as const, gid: '0' },
   ];
@@ -188,10 +209,15 @@ export async function fetchAllSheetLeads(sheetId: string): Promise<SheetParseRes
           });
         }
       } else {
-        // Headers: [empty, empty, Responsable, Nom de l'entreprise..., Tel, Mail, Adresse, Contacté, Remarques]
+        // Headers: [empty, empty, Responsable, Nom/Centre, Tel, Mail, Adresse, Contacté, Remarques]
+        // Some rows have shifted columns (e.g. email in col 7 instead of col 5)
         for (let i = 1; i < rows.length; i++) {
           const row = rows[i];
-          // Find company name - usually col 3 or col 0 if formatted differently
+
+          // Skip empty/FALSE-only rows
+          const hasContent = row.some((cell) => cell && cell !== 'FALSE' && cell.trim().length > 1);
+          if (!hasContent) continue;
+
           let name = '';
           let contactPerson = '';
           let phone = '';
@@ -199,19 +225,50 @@ export async function fetchAllSheetLeads(sheetId: string): Promise<SheetParseRes
           let address = '';
           let notes = '';
 
+          // Dynamically find the email: scan all columns for '@'
+          let emailColIdx = -1;
+          for (let c = 0; c < row.length; c++) {
+            if (row[c]?.includes('@')) {
+              emailColIdx = c;
+              break;
+            }
+          }
+
           if (row.length >= 6) {
             contactPerson = row[2]?.trim() || '';
             name = row[3]?.trim() || '';
-            phone = row[4]?.trim() || '';
-            email = cleanEmail(row[5]);
-            address = row[6]?.trim() || '';
+
+            if (emailColIdx === 5) {
+              // Standard layout: col 4=Tel, col 5=Mail, col 6=Adresse
+              phone = row[4]?.trim() || '';
+              email = cleanEmail(row[5]);
+              address = row[6]?.trim() || '';
+            } else if (emailColIdx === 7 || emailColIdx === 6) {
+              // Shifted layout (like coaching academy): col 4=address, col 5/6=phone, col 7=email
+              address = row[4]?.trim() || '';
+              phone = row[5]?.trim() || '';
+              email = cleanEmail(row[emailColIdx]);
+            } else if (emailColIdx >= 0) {
+              // Email found in unexpected column
+              email = cleanEmail(row[emailColIdx]);
+              phone = row[4]?.trim() || '';
+              address = row[6]?.trim() || '';
+            } else {
+              // No email found in any column
+              phone = row[4]?.trim() || '';
+              address = row[6]?.trim() || '';
+            }
+
             notes = row[8]?.trim() || '';
           } else {
             name = row[0]?.trim() || '';
             email = cleanEmail(row[1]);
           }
 
-          if (!name || name.toLowerCase().includes("nom de l'entreprise") || name.length < 2) continue;
+          // Skip header rows or rows without a name
+          if (!name || name.toLowerCase().includes("nom de l'entreprise") || name.toLowerCase().includes('centre de formation') && name.length < 25 || name.length < 2) continue;
+          // Skip if the name looks like it's a re-parsed header
+          if (name.toLowerCase().includes('patisserie')) continue;
 
           leads.push({
             id: `${tab.category}-${i}-${Math.random().toString(36).substring(2, 7)}`,
@@ -238,7 +295,6 @@ export async function fetchAllSheetLeads(sheetId: string): Promise<SheetParseRes
     total: leads.length,
     withEmail: leads.filter((l) => l.email && l.email.includes('@')).length,
     ensi: leads.filter((l) => l.category === 'ensi').length,
-    sponsorship: leads.filter((l) => l.category === 'sponsorship').length,
     formation: leads.filter((l) => l.category === 'formation').length,
     food: leads.filter((l) => l.category === 'food').length,
   };

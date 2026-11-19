@@ -1,12 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
-import { getSignatureHtml, getSignatureAttachments } from '@/lib/signature';
+import { getSignatureHtml } from '@/lib/signature';
+import { getEffectiveEmailAttachments } from '@/lib/email-attachments';
 import { saveSentEmail } from '@/lib/json-storage';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { to, subject, emailBody, senderName, senderEmail, replyTo, scheduledTime, smtpPass } = body as {
+    const {
+      to,
+      subject,
+      emailBody,
+      senderName,
+      senderEmail,
+      replyTo,
+      scheduledTime,
+      smtpPass,
+      customAttachments,
+      excludeGlobal,
+    } = body as {
       to: string;
       subject: string;
       emailBody: string;
@@ -15,6 +27,8 @@ export async function POST(req: NextRequest) {
       replyTo?: string;
       scheduledTime?: string;
       smtpPass?: string;
+      customAttachments?: any[];
+      excludeGlobal?: boolean;
     };
 
     if (!to || !to.includes('@')) {
@@ -90,6 +104,12 @@ export async function POST(req: NextRequest) {
 
     const textSignature = `\n\n--\nORBYX ENSI CLUB\nJasser Ben Jomaa\nResponsable Sponsoring\nTel: 58745567\nNational School of Computer Science (ENSI)\nFacebook: https://www.facebook.com/share/18f9Q5asNW/\nInstagram: https://www.instagram.com/orbyx_ensi_club\nLinkedIn: https://www.linkedin.com/in/orbyx-ensi-club-057abb373`;
 
+    const emailAttachments = getEffectiveEmailAttachments({
+      customAttachments,
+      excludeGlobal,
+    });
+    const regularFiles = emailAttachments.filter((a) => !a.cid).map((a) => a.filename);
+
     const info = await transporter.sendMail({
       from: `"${effectiveSenderName}" <${smtpUser}>`,
       to,
@@ -97,10 +117,12 @@ export async function POST(req: NextRequest) {
       subject,
       text: `${emailBody}${textSignature}`,
       html: fullHtml,
-      attachments: getSignatureAttachments(),
+      attachments: emailAttachments,
     });
 
-    console.log(`[Email Sent Successfully] Message ID: ${info.messageId} to ${to}`);
+    console.log(
+      `[Email Sent Successfully] Message ID: ${info.messageId} to ${to} (${regularFiles.length} file(s) attached: ${regularFiles.join(', ') || 'none'})`
+    );
 
     // Persist sent email to src/data/sent_emails.json
     try {
@@ -127,7 +149,13 @@ export async function POST(req: NextRequest) {
       sender: smtpUser,
       replyTo: effectiveReplyTo,
       subject,
-      message: `E-mail envoyé avec succès à ${to} depuis ${smtpUser}.`,
+      attachmentAttached: regularFiles.length > 0,
+      attachedFiles: regularFiles,
+      message: `E-mail envoyé avec succès à ${to} depuis ${smtpUser}${
+        regularFiles.length > 0
+          ? ` avec ${regularFiles.length} pièce(s) jointe(s) (${regularFiles.join(', ')}).`
+          : '.'
+      }`,
     });
   } catch (error: any) {
     console.error('Error sending email via Gmail:', error);

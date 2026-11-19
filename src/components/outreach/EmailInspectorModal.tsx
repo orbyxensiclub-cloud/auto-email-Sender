@@ -16,10 +16,16 @@ import {
   CheckCheck,
   ExternalLink,
   Building,
+  Paperclip,
+  Plus,
+  Trash2,
+  FileText,
+  Upload,
 } from 'lucide-react';
-import { CompanyLead } from '@/lib/sheets';
+import { CompanyLead, LeadAttachment } from '@/lib/sheets';
 import { EventDetails } from '@/lib/gemini';
 import { getSignatureHtml } from '@/lib/signature';
+import type { StoredAttachment } from '@/lib/email-attachments';
 
 interface EmailInspectorModalProps {
   isOpen: boolean;
@@ -29,6 +35,7 @@ interface EmailInspectorModalProps {
   apiKey: string;
   currentReviewer: string;
   globalDirectives?: string;
+  globalAttachments?: StoredAttachment[];
   onOpenReviewerModal?: () => void;
   onUpdateLead: (updated: CompanyLead) => void;
   onSendNow: (lead: CompanyLead) => Promise<void>;
@@ -358,6 +365,42 @@ export default function EmailInspectorModal({
                 placeholder="Le corps de l'e-mail personnalisé s'affichera ici..."
                 className="flex-1 w-full p-4 text-sm font-sans leading-relaxed bg-[var(--white)] border-2 border-[var(--ink)] text-[var(--ink)] resize-none focus:outline-none focus:ring-0"
               />
+            </div>
+
+            {/* Official Dossier Attachment Strip */}
+            <div className="p-4 bg-[var(--white)] border-2 border-[var(--ink)] space-y-2">
+              <div className="flex items-center justify-between border-b border-[var(--ink)]/20 pb-1.5 text-xs font-mono font-bold text-[var(--ink)] uppercase">
+                <div className="flex items-center gap-2">
+                  <Paperclip className="w-4 h-4 text-[var(--blue)]" />
+                  <span>PIÈCE JOINTE (INCLUSE DANS CHAQUE ENVOI)</span>
+                </div>
+                <span className="text-emerald-700 font-bold text-[11px]">✓ ATTACHÉE AUTOMATIQUEMENT</span>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-[var(--ground)] border border-[var(--ink)]/20 gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded bg-red-100 border border-red-300 flex items-center justify-center text-red-700 font-bold text-xs shrink-0">
+                    PDF
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-[var(--ink)] truncate">
+                      Dossier de Sponsoring — ORBYX ML Challenge 2.0.pdf
+                    </p>
+                    <p className="text-[10px] font-mono text-[var(--grey)]">
+                      4.1 Mo • 7 pages • Brochure de partenariat & Formules Bronze, Silver, Gold, Platine
+                    </p>
+                  </div>
+                </div>
+                <a
+                  href="/docs/Dossier de Sponsoring — ORBYX ML Challenge 2.0.pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-transit inline-flex items-center gap-1.5 !py-1.5 !px-3 !text-xs !bg-[var(--white)] shrink-0"
+                  title="Consulter le dossier de sponsoring complet"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Ouvrir le PDF</span>
+                </a>
+              </div>
             </div>
 
             {/* Official ORBYX Signature Preview at the bottom */}

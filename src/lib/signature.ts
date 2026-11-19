@@ -1,5 +1,3 @@
-import path from 'path';
-
 export interface SignatureOptions {
   name?: string;
   role?: string;
@@ -83,37 +81,6 @@ export function getSignatureHtml(options: SignatureOptions = {}): string {
   </div>
 </div>
 `.trim();
-}
-
-export function getSignatureAttachments() {
-  const baseDir = path.join(process.cwd(), 'public', 'images', 'signature');
-  return [
-    {
-      filename: 'orbyx_logo.png',
-      path: path.join(baseDir, 'ii_1a1e5e0d0e006.png'),
-      cid: 'ii_1a1e5e0d0e006',
-    },
-    {
-      filename: 'phone.png',
-      path: path.join(baseDir, 'ii_1a1e5e0d0e307.png'),
-      cid: 'ii_1a1e5e0d0e307',
-    },
-    {
-      filename: 'facebook.png',
-      path: path.join(baseDir, 'ii_1a1e5e0d0e308.png'),
-      cid: 'ii_1a1e5e0d0e308',
-    },
-    {
-      filename: 'instagram.png',
-      path: path.join(baseDir, 'ii_1a1e5e0d0e309.png'),
-      cid: 'ii_1a1e5e0d0e309',
-    },
-    {
-      filename: 'linkedin.png',
-      path: path.join(baseDir, 'ii_1a1e5e0d0e40a.png'),
-      cid: 'ii_1a1e5e0d0e40a',
-    },
-  ];
 }
 
 /**
