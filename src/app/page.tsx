@@ -17,6 +17,9 @@ import { CompanyLead, CategoryKey, ApprovalRecord } from '@/lib/sheets';
 import type { StoredAttachment } from '@/lib/email-attachments';
 import { EventDetails, defaultEventDetails } from '@/lib/gemini';
 import { Sparkles, AlertTriangle, CheckCircle } from 'lucide-react';
+import type { GeminiKeyItem } from '@/app/api/gemini/keys/route';
+
+const DEFAULT_KEYS_POOL: GeminiKeyItem[] = [];
 
 const DEFAULT_SHEET_URL =
   'https://docs.google.com/spreadsheets/d/1WRTAe68SDCdEBt1-4Dv8D3REDNmSqz_1y-YAF2vNVY0/edit?usp=sharing';
@@ -66,6 +69,7 @@ export default function HomePage() {
 
   // Settings
   const [apiKey, setApiKey] = useState('');
+  const [apiKeysPool, setApiKeysPool] = useState<GeminiKeyItem[]>(DEFAULT_KEYS_POOL);
   const [smtpPass, setSmtpPass] = useState('fhdhixdgigwuaxhq');
   const [eventDetails, setEventDetails] = useState<EventDetails>(defaultEventDetails);
   const [currentReviewer, setCurrentReviewer] = useState('Jasser Ben Jomaa');
@@ -87,6 +91,37 @@ export default function HomePage() {
     if (typeof window !== 'undefined') {
       const savedKey = localStorage.getItem('gemini_api_key') || process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
       if (savedKey) setApiKey(savedKey);
+
+      // Load and sync Multi-Key Gemini Pool
+      try {
+        const savedPoolStr = localStorage.getItem('gemini_api_keys_pool');
+        if (savedPoolStr) {
+          const parsed = JSON.parse(savedPoolStr);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const map = new Map<string, GeminiKeyItem>();
+            DEFAULT_KEYS_POOL.forEach((k) => map.set(k.id, k));
+            parsed.forEach((k: GeminiKeyItem) => map.set(k.id, k));
+            setApiKeysPool(Array.from(map.values()));
+          }
+        }
+      } catch {}
+
+      fetch('/api/gemini/keys')
+        .then((r) => r.json())
+        .then((data) => {
+          if (Array.isArray(data.keys) && data.keys.length > 0) {
+            setApiKeysPool((prev) => {
+              const map = new Map(prev.map((k) => [k.id, k]));
+              data.keys.forEach((sk: GeminiKeyItem) => {
+                if (!map.has(sk.id)) map.set(sk.id, sk);
+              });
+              const merged = Array.from(map.values());
+              localStorage.setItem('gemini_api_keys_pool', JSON.stringify(merged));
+              return merged;
+            });
+          }
+        })
+        .catch(() => {});
 
       const savedSmtp = localStorage.getItem('outreach_smtp_pass');
       if (savedSmtp && savedSmtp !== 'psootfqrahfzjfbr') {
@@ -471,14 +506,25 @@ export default function HomePage() {
     }
   };
 
-  const handleSaveApiKey = (key: string, newSmtpPass?: string) => {
+  const handleSaveApiKey = (key: string, newSmtpPass?: string, updatedPool?: GeminiKeyItem[]) => {
     setApiKey(key);
     localStorage.setItem('gemini_api_key', key);
     if (newSmtpPass !== undefined) {
       setSmtpPass(newSmtpPass);
       localStorage.setItem('outreach_smtp_pass', newSmtpPass);
     }
-    showToast('Identifiants enregistrés', 'Clé Gemini et mot de passe SMTP mis à jour.', 'success');
+    if (updatedPool) {
+      setApiKeysPool(updatedPool);
+      localStorage.setItem('gemini_api_keys_pool', JSON.stringify(updatedPool));
+      const activeCount = updatedPool.filter((k) => k.enabled && k.key.trim().length > 0).length;
+      showToast(
+        'Pool Gemini & SMTP mis à jour',
+        `${activeCount} workers parallèles configurés pour la génération simultanée.`,
+        'success'
+      );
+    } else {
+      showToast('Identifiants enregistrés', 'Clé Gemini et mot de passe SMTP mis à jour.', 'success');
+    }
   };
 
   const handleSaveEventDetails = (newDetails: EventDetails) => {
@@ -594,9 +640,10 @@ export default function HomePage() {
       return;
     }
 
-    if (!apiKey) {
+    const effectiveKey = apiKey || apiKeysPool.find((k) => k.enabled && k.key.trim().length > 0)?.key;
+    if (!effectiveKey) {
       setIsApiKeyModalOpen(true);
-      showToast('Clé API requise', 'Veuillez saisir votre clé API Gemini pour générer.', 'warn');
+      showToast('Clé API requise', 'Veuillez saisir ou activer votre clé API Gemini pour générer.', 'warn');
       return;
     }
 
@@ -610,7 +657,7 @@ export default function HomePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          apiKey,
+          apiKey: effectiveKey,
           lead,
           event: eventDetails,
           globalDirectives,
@@ -657,14 +704,142 @@ export default function HomePage() {
     }
   };
 
-  // Batch generate emails for active category
-  const handleBatchGenerate = async () => {
-    if (!apiKey) {
+  // Multi-Worker Parallel Gemini Generation (1 parallel execution per active API key)
+  const runParallelGeminiGeneration = async (
+    targetLeads: CompanyLead[],
+    contextTitle: string = 'Génération'
+  ) => {
+    const activeKeys = apiKeysPool.filter((k) => k.enabled && k.key.trim().length > 0);
+    if (activeKeys.length === 0) {
       setIsApiKeyModalOpen(true);
-      showToast('Clé API requise', 'Veuillez configurer votre clé Gemini.', 'warn');
+      showToast('Clés API requises', 'Veuillez activer au moins une clé Gemini dans le pool.', 'warn');
       return;
     }
 
+    const actionable = targetLeads.filter(
+      (l) => l.status !== 'refused' && l.email && (!l.generatedSubject || l.status === 'idle' || l.status === 'failed')
+    );
+
+    if (actionable.length === 0) {
+      showToast(
+        'Aucun e-mail à générer',
+        'Toutes les entreprises ciblées ont déjà un e-mail rédigé ou sont sans adresse e-mail.',
+        'info'
+      );
+      return;
+    }
+
+    setBatchGenerating(true);
+    setBatchProgress({ current: 0, total: actionable.length });
+
+    const workerCount = activeKeys.length;
+    const workerNames = activeKeys.map((k) => k.name).join(', ');
+
+    showToast(
+      'IA Multi-Workers en parallèle',
+      `Lancement simultané de ${workerCount} workers (${workerNames}) pour ${actionable.length} entreprises...`,
+      'info'
+    );
+
+    let nextQueueIdx = 0;
+    let completedCount = 0;
+    const total = actionable.length;
+
+    // Worker loop running with assigned key
+    const runWorker = async (workerKey: GeminiKeyItem) => {
+      while (true) {
+        if (nextQueueIdx >= total) break;
+        const currentIdx = nextQueueIdx++;
+        if (currentIdx >= total) break;
+
+        const lead = actionable[currentIdx];
+
+        try {
+          const res = await fetch('/api/gemini/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              apiKey: workerKey.key,
+              lead,
+              event: eventDetails,
+              globalDirectives,
+            }),
+          });
+
+          const data = await res.json();
+          if (res.ok && data.subject && data.body) {
+            setLeads((prev) =>
+              prev.map((item) =>
+                item.id === lead.id
+                  ? {
+                      ...item,
+                      generatedSubject: data.subject,
+                      generatedBody: stripTrailingTextSig(data.body),
+                      status: 'draft',
+                    }
+                  : item
+              )
+            );
+          } else {
+            // Intelligent fallback: try other active keys in the pool
+            console.warn(`Worker ${workerKey.name} returned error for ${lead.name}:`, data.error);
+            let recovered = false;
+            for (const fallbackKey of activeKeys) {
+              if (fallbackKey.key === workerKey.key) continue;
+              try {
+                const resFb = await fetch('/api/gemini/generate', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    apiKey: fallbackKey.key,
+                    lead,
+                    event: eventDetails,
+                    globalDirectives,
+                  }),
+                });
+                const dataFb = await resFb.json();
+                if (resFb.ok && dataFb.subject && dataFb.body) {
+                  setLeads((prev) =>
+                    prev.map((item) =>
+                      item.id === lead.id
+                        ? {
+                            ...item,
+                            generatedSubject: dataFb.subject,
+                            generatedBody: stripTrailingTextSig(dataFb.body),
+                            status: 'draft',
+                          }
+                        : item
+                    )
+                  );
+                  recovered = true;
+                  break;
+                }
+              } catch {}
+            }
+          }
+        } catch (err) {
+          console.error(`Worker ${workerKey.name} fetch exception on ${lead.name}:`, err);
+        } finally {
+          completedCount++;
+          setBatchProgress({ current: completedCount, total });
+          await new Promise((r) => setTimeout(r, 150));
+        }
+      }
+    };
+
+    // Execute 1 worker per active key -> full parallel execution!
+    await Promise.all(activeKeys.map((k) => runWorker(k)));
+
+    setBatchGenerating(false);
+    showToast(
+      'Génération parallèle terminée',
+      `${completedCount} e-mails rédigés avec succès grâce aux ${workerCount} workers Gemini en simultané.`,
+      'success'
+    );
+  };
+
+  // Batch generate emails for active category in parallel
+  const handleBatchGenerate = async () => {
     const pending = leads.filter(
       (l) => l.category === selectedCategory && (!l.generatedSubject || l.status === 'idle') && l.email && l.status !== 'refused'
     );
@@ -674,48 +849,7 @@ export default function HomePage() {
       return;
     }
 
-    setBatchGenerating(true);
-    setBatchProgress({ current: 0, total: pending.length });
-
-    let count = 0;
-    for (const lead of pending) {
-      try {
-        const res = await fetch('/api/gemini/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            apiKey,
-            lead,
-            event: eventDetails,
-            globalDirectives,
-          }),
-        });
-
-        const data = await res.json();
-        if (res.ok) {
-          setLeads((prev) =>
-            prev.map((item) =>
-              item.id === lead.id
-                ? {
-                    ...item,
-                    generatedSubject: data.subject,
-                    generatedBody: data.body,
-                    status: 'draft',
-                  }
-                : item
-            )
-          );
-        }
-      } catch (err) {
-        console.error(`Batch error for ${lead.name}:`, err);
-      }
-      count++;
-      setBatchProgress({ current: count, total: pending.length });
-      await new Promise((r) => setTimeout(r, 600));
-    }
-
-    setBatchGenerating(false);
-    showToast('Génération terminée', `${count} e-mails ont été rédigés sur le modèle ORBYX ML Challenge 2.0.`, 'success');
+    await runParallelGeminiGeneration(pending, 'Catégorie');
   };
 
   // 1-Person Approval Rule: Accept or revoke approval
@@ -1040,71 +1174,9 @@ export default function HomePage() {
     }
   };
 
-  // Batch generate emails for selected leads
+  // Batch generate emails for selected leads in parallel
   const handleBatchGenerateSelected = async (targetLeads: CompanyLead[]) => {
-    if (!apiKey) {
-      setIsApiKeyModalOpen(true);
-      showToast('Clé API requise', 'Veuillez configurer votre clé Gemini.', 'warn');
-      return;
-    }
-
-    const actionable = targetLeads.filter((l) => l.status !== 'refused' && l.email);
-
-    if (actionable.length === 0) {
-      showToast(
-        'Aucune entreprise éligible',
-        'Les entreprises sélectionnées sont soit annulées/bloquées, soit sans adresse e-mail.',
-        'warn'
-      );
-      return;
-    }
-
-    setBatchGenerating(true);
-    setBatchProgress({ current: 0, total: actionable.length });
-
-    let count = 0;
-    for (const lead of actionable) {
-      try {
-        const res = await fetch('/api/gemini/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            apiKey,
-            lead,
-            event: eventDetails,
-            globalDirectives,
-          }),
-        });
-
-        const data = await res.json();
-        if (res.ok) {
-          setLeads((prev) =>
-            prev.map((item) =>
-              item.id === lead.id
-                ? {
-                    ...item,
-                    generatedSubject: data.subject,
-                    generatedBody: stripTrailingTextSig(data.body),
-                    status: 'draft',
-                  }
-                : item
-            )
-          );
-        }
-      } catch (err) {
-        console.error(`Batch error for ${lead.name}:`, err);
-      }
-      count++;
-      setBatchProgress({ current: count, total: actionable.length });
-      await new Promise((r) => setTimeout(r, 600));
-    }
-
-    setBatchGenerating(false);
-    showToast(
-      'Génération terminée',
-      `${count} e-mails ont été rédigés pour la sélection sur le modèle ORBYX ML Challenge 2.0.`,
-      'success'
-    );
+    await runParallelGeminiGeneration(targetLeads, 'Sélection');
   };
 
   // Accept selected leads
@@ -1456,7 +1528,7 @@ export default function HomePage() {
         sheetUrl={sheetUrl}
         onReloadSheet={() => loadSheetData(sheetUrl)}
         loadingSheet={loadingSheet}
-        hasApiKey={!!apiKey}
+        hasApiKey={!!apiKey || apiKeysPool.some((k) => k.enabled && k.key.trim().length > 0)}
         onOpenApiKeyModal={() => setIsApiKeyModalOpen(true)}
         onOpenEventModal={() => setIsEventModalOpen(true)}
         onOpenSheetModal={() => setIsSheetModalOpen(true)}
@@ -1472,7 +1544,7 @@ export default function HomePage() {
       {/* Main Workspace */}
       <main className="flex-1 w-full max-w-[1360px] mx-auto px-4 sm:px-8 py-6 space-y-5">
         {/* Banner Alert when API key is missing */}
-        {!apiKey && (
+        {!apiKey && !apiKeysPool.some((k) => k.enabled && k.key.trim().length > 0) && (
           <div className="p-4 bg-[var(--yellow)] text-[var(--ink)] border-2 border-[var(--ink)] shadow-[4px_4px_0_var(--ink)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-[var(--ink)] text-[var(--yellow)]">
@@ -1481,7 +1553,7 @@ export default function HomePage() {
               <div>
                 <h3 className="text-sm font-black uppercase tracking-tight">CLÉ API GEMINI NON CONFIGURÉE</h3>
                 <p className="text-xs font-mono text-[var(--ink)]/90 uppercase font-semibold">
-                  Pour générer les e-mails de sponsoring du ML Challenge 2.0 et dialoguer avec le copilote IA, veuillez connecter votre clé API Gemini.
+                  Pour générer les e-mails de sponsoring du ML Challenge 2.0 et dialoguer avec le copilote IA, veuillez connecter vos clés API Gemini.
                 </p>
               </div>
             </div>
@@ -1550,7 +1622,7 @@ export default function HomePage() {
         onClose={() => setIsInspectorOpen(false)}
         lead={selectedLead}
         event={eventDetails}
-        apiKey={apiKey}
+        apiKey={apiKey || apiKeysPool.find((k) => k.enabled && k.key.trim().length > 0)?.key || ''}
         currentReviewer={currentReviewer}
         globalDirectives={globalDirectives}
         globalAttachments={globalAttachments}
@@ -1590,8 +1662,9 @@ export default function HomePage() {
       <ApiKeyModal
         isOpen={isApiKeyModalOpen}
         onClose={() => setIsApiKeyModalOpen(false)}
-        apiKey={apiKey}
+        apiKey={apiKey || apiKeysPool.find((k) => k.enabled && k.key.trim().length > 0)?.key || ''}
         smtpPass={smtpPass}
+        keysPool={apiKeysPool}
         onSave={handleSaveApiKey}
       />
 
