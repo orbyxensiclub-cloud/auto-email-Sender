@@ -10298,7 +10298,7 @@
     "phone": "7777777",
     "fax": "",
     "email": "jasserj663@gmail.com",
-    "status": "sent",
+    "status": "accepted",
     "chatHistory": [
       {
         "id": "u-1795007679027",
@@ -10318,7 +10318,7 @@
     "approvals": [
       {
         "reviewerName": "Jasser Ben Jomaa",
-        "timestamp": "14:35"
+        "timestamp": "18:12"
       }
     ],
     "sentAt": "2026-11-18T13:36:01.573Z"
@@ -10332,14 +10332,14 @@
     "phone": "",
     "fax": "",
     "email": "yassine.daga@ensi-uma.tn",
-    "status": "draft",
+    "status": "accepted",
     "chatHistory": [],
     "generatedSubject": "ML Challenge 2.0 (ORBYX — ENSI) x yassin : Partenariat IA & Talents d'élite",
     "generatedBody": "Bonjour,\n\nEn décembre, 60 à 80 élèves-ingénieurs de l'ENSI relèveront un défi concret de machine learning à l'occasion du ML Challenge 2.0. Nous souhaitons associer à cette initiative des entreprises technologiques de premier plan comme yassin.\n\nJe suis Jasser Ben Jomaa, Responsable Sponsoring d'ORBYX, le club IA de l'ENSI, école d'ingénieurs spécialisée en informatique en Tunisie.\n\nLors de sa première saison, ORBYX a réuni plus de 200 membres actifs, organisé plus de 13 ateliers et 3 compétitions Kaggle, et accompagné 4 projets d'IA. Pour 2026/2027, nous visons plus de 1 000 étudiants touchés, au sein de notre communauté de plus de 800 élèves-ingénieurs et chercheurs.\n\nCe que yassin peut y gagner :\n\nVisibilité : votre logo affiché sur tous nos supports de communication et des publications dédiées sur nos réseaux.\n\nRecrutement : des rencontres directes avec les participants et un accès privilégié aux CV de talents spécialisés en IA et informatique pour vos futurs stages PFE.\n\nMarque employeur : l'occasion de présenter votre culture d'entreprise et vos technologies à de futurs ingénieurs.\n\nExpertise : la possibilité de proposer un cas d'usage, de mentorer les équipes ou de rejoindre le jury.\n\nImpact : une contribution concrète au développement des compétences en IA en Tunisie.\n\nComment devenir partenaire ?\n\nVotre contribution peut prendre plusieurs formes : soutien financier via nos formules Bronze, Argent, Or et Platine détaillées dans le dossier ci-joint, lots, crédits cloud ou mentorat.\n\nSeriez-vous disponible pour un échange visio ou téléphonique de 15 minutes dans les prochains jours ? Je serais ravi de vous présenter le challenge.\n\nMerci pour votre temps et votre considération. Au plaisir d'échanger avec vous !\n\nBien cordialement,",
     "approvals": [
       {
-        "reviewerName": "kk",
-        "timestamp": "13:39"
+        "reviewerName": "Jasser Ben Jomaa",
+        "timestamp": "18:12"
       }
     ],
     "sentAt": "2026-11-18T12:45:11.723Z"

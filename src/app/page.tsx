@@ -1040,6 +1040,300 @@ export default function HomePage() {
     }
   };
 
+  // Batch generate emails for selected leads
+  const handleBatchGenerateSelected = async (targetLeads: CompanyLead[]) => {
+    if (!apiKey) {
+      setIsApiKeyModalOpen(true);
+      showToast('Clé API requise', 'Veuillez configurer votre clé Gemini.', 'warn');
+      return;
+    }
+
+    const actionable = targetLeads.filter((l) => l.status !== 'refused' && l.email);
+
+    if (actionable.length === 0) {
+      showToast(
+        'Aucune entreprise éligible',
+        'Les entreprises sélectionnées sont soit annulées/bloquées, soit sans adresse e-mail.',
+        'warn'
+      );
+      return;
+    }
+
+    setBatchGenerating(true);
+    setBatchProgress({ current: 0, total: actionable.length });
+
+    let count = 0;
+    for (const lead of actionable) {
+      try {
+        const res = await fetch('/api/gemini/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            apiKey,
+            lead,
+            event: eventDetails,
+            globalDirectives,
+          }),
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          setLeads((prev) =>
+            prev.map((item) =>
+              item.id === lead.id
+                ? {
+                    ...item,
+                    generatedSubject: data.subject,
+                    generatedBody: stripTrailingTextSig(data.body),
+                    status: 'draft',
+                  }
+                : item
+            )
+          );
+        }
+      } catch (err) {
+        console.error(`Batch error for ${lead.name}:`, err);
+      }
+      count++;
+      setBatchProgress({ current: count, total: actionable.length });
+      await new Promise((r) => setTimeout(r, 600));
+    }
+
+    setBatchGenerating(false);
+    showToast(
+      'Génération terminée',
+      `${count} e-mails ont été rédigés pour la sélection sur le modèle ORBYX ML Challenge 2.0.`,
+      'success'
+    );
+  };
+
+  // Accept selected leads
+  const handleAcceptSelected = (targetLeads: CompanyLead[]) => {
+    if (!currentReviewer) {
+      setIsReviewerModalOpen(true);
+      showToast('Nom requis', 'Veuillez définir votre nom avant de valider.', 'warn');
+      return;
+    }
+
+    const reviewer = currentReviewer.trim();
+    const timestamp = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const actionable = targetLeads.filter((l) => l.status !== 'refused');
+
+    if (actionable.length === 0) {
+      showToast('Aucune entreprise valide', 'Les entreprises sélectionnées sont annulées/bloquées.', 'warn');
+      return;
+    }
+
+    const actionableIds = new Set(actionable.map((l) => l.id));
+
+    setLeads((prev) =>
+      prev.map((item) => {
+        if (actionableIds.has(item.id)) {
+          return {
+            ...item,
+            approvals: [{ reviewerName: reviewer, timestamp }],
+            status: 'accepted',
+          };
+        }
+        return item;
+      })
+    );
+
+    showToast(
+      'Validation réussie',
+      `${actionable.length} entreprise(s) sélectionnée(s) validée(s) par ${reviewer}.`,
+      'success'
+    );
+  };
+
+  // Cancel / Block or Unblock selected leads
+  const handleCancelSelected = (targetLeads: CompanyLead[]) => {
+    if (!currentReviewer) {
+      setIsReviewerModalOpen(true);
+      showToast('Nom requis', 'Veuillez définir votre nom pour enregistrer cette action.', 'warn');
+      return;
+    }
+
+    const reviewer = currentReviewer.trim();
+    const timestamp = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const targetIds = new Set(targetLeads.map((l) => l.id));
+    const allAlreadyRefused = targetLeads.every((l) => l.status === 'refused');
+
+    setLeads((prev) =>
+      prev.map((item) => {
+        if (targetIds.has(item.id)) {
+          if (allAlreadyRefused) {
+            return {
+              ...item,
+              status: item.generatedSubject ? 'draft' : 'idle',
+              refusedBy: undefined,
+            };
+          } else {
+            return {
+              ...item,
+              status: 'refused',
+              refusedBy: { reviewerName: reviewer, timestamp },
+              approvals: [],
+              scheduledTime: undefined,
+            };
+          }
+        }
+        return item;
+      })
+    );
+
+    if (allAlreadyRefused) {
+      showToast(
+        'Entreprises débloquées',
+        `${targetLeads.length} entreprise(s) débloquée(s) et réintégrées.`,
+        'info'
+      );
+    } else {
+      showToast(
+        'Entreprises bloquées / annulées',
+        `${targetLeads.length} entreprise(s) annulée(s) par ${reviewer}. Aucun e-mail ne sera généré ni envoyé.`,
+        'warn'
+      );
+    }
+  };
+
+  // Schedule selected leads
+  const handleScheduleSelected = (targetLeads: CompanyLead[], scheduleTimeStr: string) => {
+    const actionable = targetLeads.filter((l) => l.status !== 'refused' && l.email);
+
+    if (actionable.length === 0) {
+      showToast(
+        'Aucune entreprise éligible',
+        'Les entreprises sélectionnées sont annulées ou sans adresse e-mail.',
+        'warn'
+      );
+      return;
+    }
+
+    const startTime = scheduleTimeStr ? new Date(scheduleTimeStr) : new Date();
+    if (isNaN(startTime.getTime())) {
+      showToast('Date invalide', "Veuillez choisir une date et heure d'envoi valides.", 'warn');
+      return;
+    }
+
+    const reviewer = currentReviewer?.trim() || 'Jasser Ben Jomaa';
+    const nowTime = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+    let offsetMinutes = 0;
+    const scheduleMap = new Map<string, string>();
+    for (const lead of actionable) {
+      const scheduledDate = new Date(startTime.getTime() + offsetMinutes * 60000);
+      scheduleMap.set(lead.id, scheduledDate.toISOString());
+      offsetMinutes += 2;
+    }
+
+    setLeads((prev) =>
+      prev.map((item) => {
+        if (scheduleMap.has(item.id)) {
+          return {
+            ...item,
+            status: 'scheduled',
+            scheduledTime: scheduleMap.get(item.id),
+            approvals:
+              item.approvals && item.approvals.length > 0
+                ? item.approvals
+                : [{ reviewerName: reviewer, timestamp: nowTime }],
+          };
+        }
+        return item;
+      })
+    );
+
+    showToast(
+      'Programmation réussie',
+      `${actionable.length} e-mail(s) programmé(s) à partir du ${startTime.toLocaleString('fr-FR')} (intervalle 2 min).`,
+      'success'
+    );
+  };
+
+  // Send selected leads immediately
+  const handleSendSelected = async (targetLeads: CompanyLead[]) => {
+    const readyLeads = targetLeads.filter(
+      (l) => l.status !== 'refused' && l.email && l.generatedSubject && l.generatedBody
+    );
+
+    if (readyLeads.length === 0) {
+      const ungenerated = targetLeads.filter((l) => !l.generatedSubject && l.email && l.status !== 'refused');
+      if (ungenerated.length > 0) {
+        showToast(
+          'E-mails non générés',
+          `Veuillez d'abord cliquer sur "GÉNÉRER (${targetLeads.length})" avant de les expédier.`,
+          'warn'
+        );
+      } else {
+        showToast('Aucun e-mail prêt', "Aucun e-mail prêt pour l'envoi dans la sélection.", 'warn');
+      }
+      return;
+    }
+
+    const confirmSend = window.confirm(
+      `Confirmez-vous l'expédition immédiate de ${readyLeads.length} e-mail(s) sélectionné(s) via votre compte Gmail (${eventDetails.organizerEmail}) ?`
+    );
+    if (!confirmSend) return;
+
+    setBatchSending(true);
+    setBatchSendProgress({ current: 0, total: readyLeads.length });
+
+    let sentCount = 0;
+    for (let i = 0; i < readyLeads.length; i++) {
+      const lead = readyLeads[i];
+      try {
+        const res = await fetch('/api/email/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: lead.email,
+            subject: lead.generatedSubject,
+            emailBody: lead.generatedBody,
+            senderName: eventDetails.organizerName,
+            senderEmail: eventDetails.organizerEmail,
+            smtpPass,
+            customAttachments: lead.customAttachments,
+            excludeGlobal: lead.excludeGlobalAttachments,
+          }),
+        });
+
+        if (res.ok) {
+          sentCount++;
+          setLeads((prev) =>
+            prev.map((item) =>
+              item.id === lead.id
+                ? {
+                    ...item,
+                    status: 'sent',
+                    sentAt: new Date().toISOString(),
+                    scheduledTime: undefined,
+                  }
+                : item
+            )
+          );
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          console.error(`Error sending to ${lead.name}:`, errData);
+        }
+      } catch (err) {
+        console.error(`Send error for ${lead.name}:`, err);
+      }
+
+      setBatchSendProgress({ current: i + 1, total: readyLeads.length });
+      if (i < readyLeads.length - 1) {
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+    }
+
+    setBatchSending(false);
+    showToast(
+      'Envoi groupé terminé',
+      `${sentCount} sur ${readyLeads.length} e-mails sélectionnés expédiés avec succès via Gmail SMTP.`,
+      'success'
+    );
+  };
+
   // Schedule send for individual lead
   const handleScheduleSend = async (lead: CompanyLead, scheduledTime: string) => {
     if (lead.status === 'refused') {
@@ -1240,6 +1534,13 @@ export default function HomePage() {
           onRefuse={handleRefuseLead}
           generatingId={generatingId}
           currentReviewer={currentReviewer}
+          onBatchGenerateSelected={handleBatchGenerateSelected}
+          onAcceptSelected={handleAcceptSelected}
+          onCancelSelected={handleCancelSelected}
+          onScheduleSelected={handleScheduleSelected}
+          onSendSelected={handleSendSelected}
+          batchGenerating={batchGenerating}
+          batchSending={batchSending}
         />
       </main>
 
