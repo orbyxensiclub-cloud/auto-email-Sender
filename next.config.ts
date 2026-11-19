@@ -12,6 +12,14 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  async rewrites() {
+    return [
+      {
+        source: '/uploads/:file*',
+        destination: '/api/upload?file=:file*',
+      },
+    ];
+  },
 };
 
 export default nextConfig;

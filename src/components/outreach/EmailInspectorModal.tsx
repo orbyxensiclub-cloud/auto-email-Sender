@@ -52,6 +52,7 @@ export default function EmailInspectorModal({
   apiKey,
   currentReviewer,
   globalDirectives,
+  globalAttachments,
   onOpenReviewerModal,
   onUpdateLead,
   onSendNow,
@@ -64,6 +65,13 @@ export default function EmailInspectorModal({
   const [recipient, setRecipient] = useState('');
   const [scheduledTime, setScheduledTime] = useState('');
 
+  // Attachments state
+  const [localAttachments, setLocalAttachments] = useState<LeadAttachment[]>([]);
+  const [excludeGlobal, setExcludeGlobal] = useState(false);
+  const [uploadingLocal, setUploadingLocal] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const localFileInputRef = useRef<HTMLInputElement | null>(null);
+
   // Chat state
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
@@ -75,6 +83,8 @@ export default function EmailInspectorModal({
       setSubject(lead.generatedSubject || '');
       setBody(lead.generatedBody || '');
       setRecipient(lead.email || '');
+      setLocalAttachments(lead.customAttachments || []);
+      setExcludeGlobal(!!lead.excludeGlobalAttachments);
       if (lead.scheduledTime) {
         try {
           const d = new Date(lead.scheduledTime);
@@ -118,12 +128,90 @@ export default function EmailInspectorModal({
     window.open(gmailUrl, '_blank');
   };
 
+  const handleUploadLocalFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploadingLocal(true);
+    setLocalError(null);
+
+    try {
+      const formData = new FormData();
+      for (let i = 0; i < files.length; i++) {
+        formData.append('files', files[i]);
+      }
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Erreur lors du téléversement');
+      }
+
+      const newAttachments: LeadAttachment[] = data.files.map((f: any) => ({
+        id: f.id,
+        name: f.name,
+        size: f.size,
+        type: f.type,
+        url: f.url,
+        path: f.path,
+      }));
+
+      const updated = [...localAttachments, ...newAttachments];
+      setLocalAttachments(updated);
+      onUpdateLead({
+        ...lead,
+        generatedSubject: subject,
+        generatedBody: body,
+        email: recipient,
+        customAttachments: updated,
+        excludeGlobalAttachments: excludeGlobal,
+      });
+    } catch (err: any) {
+      setLocalError(err.message || 'Échec du téléversement');
+    } finally {
+      setUploadingLocal(false);
+      if (localFileInputRef.current) localFileInputRef.current.value = '';
+    }
+  };
+
+  const handleDeleteLocalAttachment = (id: string) => {
+    const updated = localAttachments.filter((a) => a.id !== id);
+    setLocalAttachments(updated);
+    onUpdateLead({
+      ...lead,
+      generatedSubject: subject,
+      generatedBody: body,
+      email: recipient,
+      customAttachments: updated,
+      excludeGlobalAttachments: excludeGlobal,
+    });
+  };
+
+  const handleToggleExcludeGlobal = () => {
+    const newVal = !excludeGlobal;
+    setExcludeGlobal(newVal);
+    onUpdateLead({
+      ...lead,
+      generatedSubject: subject,
+      generatedBody: body,
+      email: recipient,
+      customAttachments: localAttachments,
+      excludeGlobalAttachments: newVal,
+    });
+  };
+
   const handleSaveDraft = () => {
     onUpdateLead({
       ...lead,
       generatedSubject: subject,
       generatedBody: body,
       email: recipient,
+      customAttachments: localAttachments,
+      excludeGlobalAttachments: excludeGlobal,
     });
   };
 
@@ -134,6 +222,8 @@ export default function EmailInspectorModal({
       generatedSubject: subject,
       generatedBody: body,
       email: recipient,
+      customAttachments: localAttachments,
+      excludeGlobalAttachments: excludeGlobal,
     });
   };
 
@@ -144,6 +234,8 @@ export default function EmailInspectorModal({
       generatedSubject: subject,
       generatedBody: body,
       email: recipient,
+      customAttachments: localAttachments,
+      excludeGlobalAttachments: excludeGlobal,
       status: 'refused',
       refusedBy: {
         reviewerName: reviewer,
@@ -158,6 +250,8 @@ export default function EmailInspectorModal({
       generatedSubject: subject,
       generatedBody: body,
       email: recipient,
+      customAttachments: localAttachments,
+      excludeGlobalAttachments: excludeGlobal,
     };
     await onSendNow(updated);
   };
@@ -171,6 +265,8 @@ export default function EmailInspectorModal({
       generatedBody: body,
       email: recipient,
       scheduledTime: isoTime,
+      customAttachments: localAttachments,
+      excludeGlobalAttachments: excludeGlobal,
     };
     await onScheduleSend(updated, isoTime);
   };
@@ -367,40 +463,161 @@ export default function EmailInspectorModal({
               />
             </div>
 
-            {/* Official Dossier Attachment Strip */}
+            {/* Global Attachments Card (Toggleable per lead) */}
             <div className="p-4 bg-[var(--white)] border-2 border-[var(--ink)] space-y-2">
-              <div className="flex items-center justify-between border-b border-[var(--ink)]/20 pb-1.5 text-xs font-mono font-bold text-[var(--ink)] uppercase">
+              <div className="flex items-center justify-between border-b border-[var(--ink)]/20 pb-2 text-xs font-mono font-black text-[var(--ink)] uppercase">
                 <div className="flex items-center gap-2">
                   <Paperclip className="w-4 h-4 text-[var(--blue)]" />
-                  <span>PIÈCE JOINTE (INCLUSE DANS CHAQUE ENVOI)</span>
+                  <span>PIÈCES JOINTES GLOBALES</span>
                 </div>
-                <span className="text-emerald-700 font-bold text-[11px]">✓ ATTACHÉE AUTOMATIQUEMENT</span>
+                <label className="flex items-center gap-2 cursor-pointer font-bold select-none text-[11px]">
+                  <input
+                    type="checkbox"
+                    checked={!excludeGlobal}
+                    onChange={handleToggleExcludeGlobal}
+                    className="w-4 h-4 accent-[var(--blue)] cursor-pointer"
+                  />
+                  <span className={!excludeGlobal ? 'text-emerald-700' : 'text-red-600'}>
+                    {!excludeGlobal ? '✓ INCLURE DANS CE MAIL' : '✗ EXCLURE CE DOCUMENT'}
+                  </span>
+                </label>
               </div>
-              <div className="flex items-center justify-between p-3 bg-[var(--ground)] border border-[var(--ink)]/20 gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded bg-red-100 border border-red-300 flex items-center justify-center text-red-700 font-bold text-xs shrink-0">
-                    PDF
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-[var(--ink)] truncate">
-                      Dossier de Sponsoring — ORBYX ML Challenge 2.0.pdf
-                    </p>
-                    <p className="text-[10px] font-mono text-[var(--grey)]">
-                      4.1 Mo • 7 pages • Brochure de partenariat & Formules Bronze, Silver, Gold, Platine
-                    </p>
-                  </div>
+
+              {!excludeGlobal ? (
+                <div className="space-y-1.5">
+                  {(globalAttachments && globalAttachments.filter((a) => a.enabled).length > 0
+                    ? globalAttachments.filter((a) => a.enabled)
+                    : [
+                        {
+                          id: 'default',
+                          name: 'Dossier de Sponsoring — ORBYX ML Challenge 2.0.pdf',
+                          size: 4313865,
+                          type: 'application/pdf',
+                          url: '/docs/Dossier de Sponsoring — ORBYX ML Challenge 2.0.pdf',
+                          path: '',
+                          enabled: true,
+                        },
+                      ]
+                  ).map((att: { id: string; name: string; size?: number; url: string }) => (
+                    <div
+                      key={att.id}
+                      className="flex items-center justify-between p-2.5 bg-[var(--ground)] border border-[var(--ink)]/20 gap-3"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded bg-red-100 border border-red-300 flex items-center justify-center text-red-700 font-bold text-xs shrink-0">
+                          PDF
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-[var(--ink)] truncate">
+                            {att.name}
+                          </p>
+                          <p className="text-[10px] font-mono text-[var(--grey)]">
+                            {att.size ? `${(att.size / (1024 * 1024)).toFixed(1)} Mo • ` : ''}
+                            Global (partagé avec tous les e-mails)
+                          </p>
+                        </div>
+                      </div>
+                      <a
+                        href={att.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn-transit inline-flex items-center gap-1 !py-1 !px-2.5 !text-[11px] !bg-[var(--white)] shrink-0"
+                        title="Ouvrir la pièce jointe"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>Voir</span>
+                      </a>
+                    </div>
+                  ))}
                 </div>
-                <a
-                  href="/docs/Dossier de Sponsoring — ORBYX ML Challenge 2.0.pdf"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-transit inline-flex items-center gap-1.5 !py-1.5 !px-3 !text-xs !bg-[var(--white)] shrink-0"
-                  title="Consulter le dossier de sponsoring complet"
+              ) : (
+                <div className="p-3 bg-gray-50 border border-dashed border-gray-300 text-center text-xs font-mono text-gray-500">
+                  Les pièces jointes globales ont été exclues pour ce destinataire.
+                </div>
+              )}
+            </div>
+
+            {/* Custom / Local Attachments for this Specific Lead */}
+            <div className="p-4 bg-[var(--white)] border-2 border-[var(--ink)] space-y-3">
+              <div className="flex items-center justify-between border-b border-[var(--ink)]/20 pb-2 text-xs font-mono font-black text-[var(--ink)] uppercase">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-amber-600" />
+                  <span>PIÈCES JOINTES SPÉCIFIQUES ({localAttachments.length})</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => localFileInputRef.current?.click()}
+                  disabled={uploadingLocal}
+                  className="btn-transit !py-1 !px-2.5 !text-[11px] !bg-[var(--yellow)] !text-[var(--ink)] !border-[var(--ink)] hover:!bg-[var(--ink)] hover:!text-[var(--yellow)] disabled:opacity-50 flex items-center gap-1.5"
                 >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Ouvrir le PDF</span>
-                </a>
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{uploadingLocal ? 'ENVOI...' : 'AJOUTER UN FICHIER'}</span>
+                </button>
               </div>
+
+              <input
+                ref={localFileInputRef}
+                type="file"
+                multiple
+                onChange={handleUploadLocalFile}
+                className="hidden"
+              />
+
+              {localError && (
+                <div className="p-2 bg-red-100 border border-red-500 text-red-800 text-xs font-mono">
+                  {localError}
+                </div>
+              )}
+
+              {localAttachments.length === 0 ? (
+                <div className="p-3 bg-[var(--ground)]/50 border border-dashed border-[var(--ink)]/20 text-center text-xs font-mono text-[var(--grey)]">
+                  Aucun fichier propre à cette entreprise. Cliquez sur &quot;AJOUTER UN FICHIER&quot; pour attacher un devis, contrat ou document dédié.
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {localAttachments.map((att) => (
+                    <div
+                      key={att.id}
+                      className="flex items-center justify-between p-2.5 bg-[var(--ground)] border border-[var(--ink)]/20 gap-3"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-800 font-bold text-xs shrink-0">
+                          <FileText className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-[var(--ink)] truncate">
+                            {att.name}
+                          </p>
+                          <p className="text-[10px] font-mono text-[var(--grey)]">
+                            {att.size ? `${Math.round(att.size / 1024)} Ko • ` : ''}
+                            Fichier spécifique à {lead.name}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <a
+                          href={att.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-transit inline-flex items-center gap-1 !py-1 !px-2 !text-[11px] !bg-[var(--white)]"
+                          title="Visualiser le fichier"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          <span>Voir</span>
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteLocalAttachment(att.id)}
+                          className="p-1 border border-red-700 bg-[var(--white)] hover:bg-red-600 hover:text-white text-red-700 transition-colors"
+                          title="Retirer ce fichier"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Official ORBYX Signature Preview at the bottom */}

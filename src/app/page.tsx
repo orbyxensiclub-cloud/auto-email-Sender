@@ -130,8 +130,9 @@ export default function HomePage() {
       fetch('/api/attachments')
         .then((res) => res.json())
         .then((data) => {
-          if (Array.isArray(data)) {
-            setGlobalAttachments(data);
+          const list = Array.isArray(data) ? data : data?.attachments;
+          if (Array.isArray(list)) {
+            setGlobalAttachments(list);
           }
         })
         .catch((err) => console.error('Failed to load global attachments:', err));
@@ -239,6 +240,8 @@ export default function HomePage() {
               senderName: eventDetails.organizerName,
               senderEmail: eventDetails.organizerEmail,
               smtpPass,
+              customAttachments: lead.customAttachments,
+              excludeGlobal: lead.excludeGlobalAttachments,
             }),
           });
           if (res.ok) {
@@ -402,7 +405,8 @@ export default function HomePage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setGlobalAttachments(Array.isArray(data) ? data : attachments);
+        const list = Array.isArray(data) ? data : data?.attachments;
+        setGlobalAttachments(Array.isArray(list) ? list : attachments);
       }
     } catch (err) {
       console.error('Failed to save global attachments:', err);
@@ -414,8 +418,9 @@ export default function HomePage() {
       const res = await fetch('/api/attachments', { method: 'DELETE' });
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data)) {
-          setGlobalAttachments(data);
+        const list = Array.isArray(data) ? data : data?.attachments;
+        if (Array.isArray(list)) {
+          setGlobalAttachments(list);
         }
       }
     } catch (err) {
@@ -770,6 +775,8 @@ export default function HomePage() {
             senderName: eventDetails.organizerName,
             senderEmail: eventDetails.organizerEmail,
             smtpPass,
+            customAttachments: lead.customAttachments,
+            excludeGlobal: lead.excludeGlobalAttachments,
           }),
         });
 
@@ -822,6 +829,8 @@ export default function HomePage() {
           senderName: eventDetails.organizerName,
           senderEmail: eventDetails.organizerEmail,
           smtpPass,
+          customAttachments: lead.customAttachments,
+          excludeGlobal: lead.excludeGlobalAttachments,
         }),
       });
 
@@ -855,6 +864,8 @@ export default function HomePage() {
           senderName: eventDetails.organizerName,
           senderEmail: eventDetails.organizerEmail,
           scheduledTime,
+          customAttachments: lead.customAttachments,
+          excludeGlobal: lead.excludeGlobalAttachments,
         }),
       });
 

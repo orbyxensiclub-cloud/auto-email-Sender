@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 
 export interface DirectiveNote {
   id: string;
@@ -14,7 +15,7 @@ export interface DirectivesData {
 }
 
 const LOCAL_FILE_PATH = path.join(process.cwd(), 'src', 'data', 'directives.json');
-const TMP_FILE_PATH = path.join('/tmp', 'directives.json');
+const TMP_FILE_PATH = path.join(os.tmpdir(), 'v5-data', 'directives.json');
 
 // In-memory fallback cache for serverless environments
 let memoryCache: DirectivesData | null = null;
@@ -147,6 +148,10 @@ export function saveDirectivesToFile(notes: DirectiveNote[]): DirectivesData {
 
   // Also write to /tmp (writable in serverless environments like Vercel and AWS Lambda)
   try {
+    const tmpDir = path.dirname(TMP_FILE_PATH);
+    if (!fs.existsSync(/*turbopackIgnore: true*/ tmpDir)) {
+      fs.mkdirSync(/*turbopackIgnore: true*/ tmpDir, { recursive: true });
+    }
     fs.writeFileSync(/*turbopackIgnore: true*/ TMP_FILE_PATH, JSON.stringify(data, null, 2), 'utf-8');
   } catch {}
 

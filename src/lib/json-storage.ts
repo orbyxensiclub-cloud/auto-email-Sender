@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import type { CompanyLead, CategoryKey } from './sheets';
 
 export interface GeneratedEmailRecord {
@@ -37,25 +38,25 @@ let memorySent: SentEmailRecord[] | null = null;
 function getPaths(filename: string) {
   return {
     local: path.join(process.cwd(), 'src', 'data', filename),
-    tmp: path.join('/tmp', filename),
+    tmp: path.join(os.tmpdir(), 'v5-data', filename),
   };
 }
 
 function safeReadJSON<T>(filename: string, fallback: T): T {
   const { local, tmp } = getPaths(filename);
 
-  // 1. Check local project data directory first (primary source of truth)
+  // 1. Check /tmp on serverless environments first (runtime mutations)
   try {
-    if (fs.existsSync(/*turbopackIgnore: true*/ local)) {
-      const content = fs.readFileSync(/*turbopackIgnore: true*/ local, 'utf-8');
+    if (fs.existsSync(/*turbopackIgnore: true*/ tmp)) {
+      const content = fs.readFileSync(/*turbopackIgnore: true*/ tmp, 'utf-8');
       return JSON.parse(content) as T;
     }
   } catch {}
 
-  // 2. Check /tmp on serverless environments
+  // 2. Check local project data directory (built-in baseline)
   try {
-    if (fs.existsSync(/*turbopackIgnore: true*/ tmp)) {
-      const content = fs.readFileSync(/*turbopackIgnore: true*/ tmp, 'utf-8');
+    if (fs.existsSync(/*turbopackIgnore: true*/ local)) {
+      const content = fs.readFileSync(/*turbopackIgnore: true*/ local, 'utf-8');
       return JSON.parse(content) as T;
     }
   } catch {}
@@ -79,9 +80,10 @@ function safeWriteJSON<T>(filename: string, data: T): void {
   // Always attempt /tmp write on serverless
   try {
     const tmpDir = path.dirname(tmp);
-    if (fs.existsSync(/*turbopackIgnore: true*/ tmpDir)) {
-      fs.writeFileSync(/*turbopackIgnore: true*/ tmp, jsonString, 'utf-8');
+    if (!fs.existsSync(/*turbopackIgnore: true*/ tmpDir)) {
+      fs.mkdirSync(/*turbopackIgnore: true*/ tmpDir, { recursive: true });
     }
+    fs.writeFileSync(/*turbopackIgnore: true*/ tmp, jsonString, 'utf-8');
   } catch {}
 }
 

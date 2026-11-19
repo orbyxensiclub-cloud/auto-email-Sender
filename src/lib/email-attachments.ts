@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 
 export interface EmailAttachment {
   filename: string;
@@ -19,8 +20,14 @@ export interface StoredAttachment {
   isDefault?: boolean;
 }
 
-function getGlobalAttachmentsFilePath(): string {
-  return path.join(process.cwd(), 'src', 'data', 'global_attachments.json');
+// In-memory cache for serverless environments (e.g. Vercel)
+let memoryGlobalAttachments: StoredAttachment[] | null = null;
+
+function getGlobalAttachmentsPaths(): { local: string; tmp: string } {
+  return {
+    local: path.join(process.cwd(), 'src', 'data', 'global_attachments.json'),
+    tmp: path.join(os.tmpdir(), 'v5-data', 'global_attachments.json'),
+  };
 }
 
 export function getDefaultGlobalAttachment(): StoredAttachment {
@@ -46,12 +53,31 @@ export function getDefaultGlobalAttachment(): StoredAttachment {
 }
 
 export function getGlobalAttachments(): StoredAttachment[] {
-  const filePath = getGlobalAttachmentsFilePath();
+  if (memoryGlobalAttachments && memoryGlobalAttachments.length > 0) {
+    return memoryGlobalAttachments;
+  }
+
+  const { local, tmp } = getGlobalAttachmentsPaths();
+
+  // 1. Check /tmp first (holds latest saved updates in serverless environment)
   try {
-    if (fs.existsSync(/*turbopackIgnore: true*/ filePath)) {
-      const content = fs.readFileSync(/*turbopackIgnore: true*/ filePath, 'utf-8');
+    if (fs.existsSync(/*turbopackIgnore: true*/ tmp)) {
+      const content = fs.readFileSync(/*turbopackIgnore: true*/ tmp, 'utf-8');
       const parsed = JSON.parse(content);
       if (Array.isArray(parsed) && parsed.length > 0) {
+        memoryGlobalAttachments = parsed;
+        return parsed;
+      }
+    }
+  } catch {}
+
+  // 2. Check local repo JSON file
+  try {
+    if (fs.existsSync(/*turbopackIgnore: true*/ local)) {
+      const content = fs.readFileSync(/*turbopackIgnore: true*/ local, 'utf-8');
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        memoryGlobalAttachments = parsed;
         return parsed;
       }
     }
@@ -62,15 +88,28 @@ export function getGlobalAttachments(): StoredAttachment[] {
 }
 
 export function saveGlobalAttachments(attachments: StoredAttachment[]): void {
-  const filePath = getGlobalAttachmentsFilePath();
+  memoryGlobalAttachments = attachments;
+  const { local, tmp } = getGlobalAttachmentsPaths();
+  const jsonStr = JSON.stringify(attachments, null, 2);
+
+  // Try local write (works in local dev, fails with EROFS on Vercel)
   try {
-    const dir = path.dirname(filePath);
+    const dir = path.dirname(local);
     if (!fs.existsSync(/*turbopackIgnore: true*/ dir)) {
       fs.mkdirSync(/*turbopackIgnore: true*/ dir, { recursive: true });
     }
-    fs.writeFileSync(/*turbopackIgnore: true*/ filePath, JSON.stringify(attachments, null, 2), 'utf-8');
+    fs.writeFileSync(/*turbopackIgnore: true*/ local, jsonStr, 'utf-8');
+  } catch {}
+
+  // Always write to /tmp (writable in serverless environments)
+  try {
+    const tmpDir = path.dirname(tmp);
+    if (!fs.existsSync(/*turbopackIgnore: true*/ tmpDir)) {
+      fs.mkdirSync(/*turbopackIgnore: true*/ tmpDir, { recursive: true });
+    }
+    fs.writeFileSync(/*turbopackIgnore: true*/ tmp, jsonStr, 'utf-8');
   } catch (err) {
-    console.error('Failed to save global attachments to JSON:', err);
+    console.error('Failed to save global attachments to tmp JSON:', err);
   }
 }
 
@@ -124,11 +163,22 @@ export function resolveAttachmentDiskPath(att: {
   if (name) {
     candidatePaths.push(path.join(process.cwd(), 'public', 'uploads', name));
     candidatePaths.push(path.join(process.cwd(), 'public', 'docs', name));
+    candidatePaths.push(path.join(os.tmpdir(), 'v5-uploads', name));
+    candidatePaths.push(path.join(os.tmpdir(), name));
   }
 
   if (att.url) {
-    const cleanUrl = decodeURIComponent(att.url.replace(/^\/+/, ''));
+    let cleanUrl = decodeURIComponent(att.url.replace(/^\/+/, ''));
+    if (cleanUrl.includes('file=')) {
+      const match = cleanUrl.match(/[?&]file=([^&]+)/);
+      if (match) cleanUrl = decodeURIComponent(match[1]);
+    }
     candidatePaths.push(path.join(process.cwd(), 'public', cleanUrl));
+    const urlBasename = path.basename(cleanUrl);
+    candidatePaths.push(path.join(process.cwd(), 'public', 'uploads', urlBasename));
+    candidatePaths.push(path.join(process.cwd(), 'public', 'docs', urlBasename));
+    candidatePaths.push(path.join(os.tmpdir(), 'v5-uploads', urlBasename));
+    candidatePaths.push(path.join(os.tmpdir(), urlBasename));
   }
 
   for (const p of candidatePaths) {
