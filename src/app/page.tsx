@@ -436,6 +436,11 @@ export default function HomePage() {
 
   // Generate Email for single lead using ORBYX ML Challenge 2.0 template
   const handleGenerateEmail = async (lead: CompanyLead) => {
+    if (lead.status === 'refused') {
+      showToast('Action impossible', 'Cette entreprise est annulée / bloquée. Débloquez-la d\'abord pour générer un e-mail.', 'warn');
+      return;
+    }
+
     if (!apiKey) {
       setIsApiKeyModalOpen(true);
       showToast('Clé API requise', 'Veuillez saisir votre clé API Gemini pour générer.', 'warn');
@@ -508,7 +513,7 @@ export default function HomePage() {
     }
 
     const pending = leads.filter(
-      (l) => l.category === selectedCategory && (!l.generatedSubject || l.status === 'idle') && l.email
+      (l) => l.category === selectedCategory && (!l.generatedSubject || l.status === 'idle') && l.email && l.status !== 'refused'
     );
 
     if (pending.length === 0) {
@@ -609,29 +614,48 @@ export default function HomePage() {
     }
   };
 
-  // Refuse single lead
+  // Annuler / Bloquer ou Débloquer une entreprise
   const handleRefuseLead = (lead: CompanyLead) => {
     if (!currentReviewer) {
       setIsReviewerModalOpen(true);
-      showToast('Nom requis', 'Veuillez saisir votre nom pour enregistrer le refus.', 'warn');
+      showToast('Nom requis', 'Veuillez saisir votre nom pour enregistrer cette action.', 'warn');
       return;
     }
 
     const reviewer = currentReviewer.trim();
+    const isCurrentlyCancelled = lead.status === 'refused';
+
     const updatedLead: CompanyLead = {
       ...lead,
-      status: 'refused',
-      refusedBy: {
-        reviewerName: reviewer,
-        timestamp: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-      },
+      status: isCurrentlyCancelled
+        ? (lead.generatedSubject ? 'draft' : 'idle')
+        : 'refused',
+      refusedBy: isCurrentlyCancelled
+        ? undefined
+        : {
+            reviewerName: reviewer,
+            timestamp: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+          },
+      // If cancelling, clear any previous scheduled time or approval
+      ...(isCurrentlyCancelled
+        ? {}
+        : { approvals: [], scheduledTime: undefined }),
     };
 
     setLeads((prev) => prev.map((item) => (item.id === lead.id ? updatedLead : item)));
     if (selectedLead?.id === lead.id) {
       setSelectedLead(updatedLead);
     }
-    showToast('E-mail refusé', `Refusé par ${reviewer}.`, 'warn');
+
+    if (isCurrentlyCancelled) {
+      showToast('Entreprise débloquée', `${lead.name} a été réintégrée et peut à nouveau être traitée.`, 'info');
+    } else {
+      showToast(
+        'Entreprise annulée / bloquée',
+        `${lead.name} a été annulée par ${reviewer}. Aucun e-mail ne sera généré ni envoyé.`,
+        'warn'
+      );
+    }
   };
 
   // Accept all drafts in current category view (1 approval is enough)
@@ -644,7 +668,11 @@ export default function HomePage() {
 
     const reviewer = currentReviewer.trim();
     const affected = filteredLeads.filter(
-      (l) => l.status === 'draft' || l.status === 'pending_approval' || (!!l.generatedSubject && l.status !== 'accepted')
+      (l) =>
+        l.status !== 'refused' &&
+        (l.status === 'draft' ||
+          l.status === 'pending_approval' ||
+          (!!l.generatedSubject && l.status !== 'accepted'))
     );
 
     if (affected.length === 0) {
@@ -658,7 +686,10 @@ export default function HomePage() {
       prev.map((item) => {
         if (
           item.category === selectedCategory &&
-          (item.status === 'draft' || item.status === 'pending_approval' || (!!item.generatedSubject && item.status !== 'accepted'))
+          item.status !== 'refused' &&
+          (item.status === 'draft' ||
+            item.status === 'pending_approval' ||
+            (!!item.generatedSubject && item.status !== 'accepted'))
         ) {
           return {
             ...item,
@@ -818,6 +849,11 @@ export default function HomePage() {
 
   // Send single lead now
   const handleSendNow = async (lead: CompanyLead) => {
+    if (lead.status === 'refused') {
+      showToast('Envoi bloqué', 'Cette entreprise est annulée / bloquée. Débloquez-la avant tout envoi.', 'warn');
+      return;
+    }
+
     try {
       const res = await fetch('/api/email/send', {
         method: 'POST',
@@ -853,6 +889,10 @@ export default function HomePage() {
 
   // Schedule send for individual lead
   const handleScheduleSend = async (lead: CompanyLead, scheduledTime: string) => {
+    if (lead.status === 'refused') {
+      showToast('Action bloquée', 'Cette entreprise est annulée / bloquée. Débloquez-la avant de programmer.', 'warn');
+      return;
+    }
     try {
       const res = await fetch('/api/email/send', {
         method: 'POST',

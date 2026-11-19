@@ -21,7 +21,7 @@ export default function StatsBar({ leads }: StatsBarProps) {
     { label: 'E-MAILS VALIDES', value: withEmail, unit: 'CONTACTS', op: 'DÉLIVRABILITÉ' },
     { label: 'BROUILLONS IA', value: drafts, unit: 'GÉNÉRÉS', op: 'REVUE REQUISE' },
     { label: 'ACCEPTÉS', value: accepted, unit: 'VALIDÉS', op: 'PRÊTS ENVOI' },
-    { label: 'REFUSÉS', value: refused, unit: 'EXCLUS', op: 'NON RETENUS' },
+    { label: 'ANNULÉS', value: refused, unit: 'BLOQUÉS', op: 'NON CONTACTÉS' },
     { label: 'PROGRAMMÉS', value: scheduled, unit: 'EN FILE', op: 'HORAIRE FIXÉ' },
     { label: 'DISPATCHÉS', value: sent, unit: 'ENVOYÉS', op: 'TRANSMISSION 200' },
   ];

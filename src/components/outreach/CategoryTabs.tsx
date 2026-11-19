@@ -90,7 +90,7 @@ export default function CategoryTabs({
     { id: 'idle', label: 'NON GÉNÉRÉS' },
     { id: 'draft', label: 'BROUILLONS' },
     { id: 'accepted', label: 'VALIDÉS' },
-    { id: 'refused', label: 'REFUSÉS' },
+    { id: 'refused', label: 'ANNULÉS' },
     { id: 'scheduled', label: 'PROGRAMMÉS' },
     { id: 'sent', label: 'ENVOYÉS' },
   ];

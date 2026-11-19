@@ -21,6 +21,7 @@ import {
   Trash2,
   FileText,
   Upload,
+  Ban,
 } from 'lucide-react';
 import { CompanyLead, LeadAttachment } from '@/lib/sheets';
 import { EventDetails } from '@/lib/gemini';
@@ -369,8 +370,14 @@ export default function EmailInspectorModal({
                 <span className="tag-hot">
                   CATÉGORIE: {lead.category.toUpperCase()}
                 </span>
-                <span className="bg-[var(--ink)] text-[var(--white)] text-[10px] font-mono px-2 py-0.5 border border-[var(--white)] uppercase">
-                  STATUT: {lead.status}
+                <span
+                  className={`text-[10px] font-mono px-2 py-0.5 border uppercase ${
+                    lead.status === 'refused'
+                      ? 'bg-red-600 text-white border-red-300 font-black'
+                      : 'bg-[var(--ink)] text-[var(--white)] border-[var(--white)]'
+                  }`}
+                >
+                  STATUT: {lead.status === 'refused' ? 'ANNULÉ / BLOQUÉ' : lead.status}
                 </span>
               </div>
               <div className="text-xs font-mono text-[var(--on-blue)] mt-1 flex items-center gap-3 flex-wrap">
@@ -401,6 +408,23 @@ export default function EmailInspectorModal({
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden divide-y-4 lg:divide-y-0 lg:divide-x-4 divide-[var(--ink)]">
           {/* Left: Email Editor & Scheduling (7 cols) */}
           <div className="lg:col-span-7 flex flex-col h-full overflow-y-auto p-5 space-y-4 bg-[var(--ground)]">
+            {/* Cancelled / Blocked Alert Banner */}
+            {lead.status === 'refused' && (
+              <div className="p-3 bg-red-100 border-2 border-red-700 text-red-900 text-xs font-mono font-bold flex items-center justify-between gap-2 shadow-[2px_2px_0_#991B1B]">
+                <div className="flex items-center gap-2">
+                  <Ban className="w-4 h-4 text-red-700 shrink-0 stroke-[2.5]" />
+                  <span>ENTREPRISE ANNULÉE / BLOQUÉE : AUCUN E-MAIL NE SERA GÉNÉRÉ NI EXPÉDIÉ</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRefuseClick}
+                  className="btn-transit !py-1 !px-2.5 !text-[11px] !bg-red-700 !text-white !border-red-900 hover:!bg-white hover:!text-red-700 font-black whitespace-nowrap"
+                >
+                  DÉBLOQUER
+                </button>
+              </div>
+            )}
+
             {/* Recipient & Subject Console */}
             <div className="p-4 bg-[var(--white)] border-2 border-[var(--ink)] space-y-3">
               <div>
@@ -720,10 +744,12 @@ export default function EmailInspectorModal({
                   <button
                     type="button"
                     onClick={handleScheduleSubmit}
-                    disabled={!scheduledTime || !recipient || !isApproved}
+                    disabled={!scheduledTime || !recipient || !isApproved || lead.status === 'refused'}
                     className="btn-transit !py-1.5 !px-3 !text-xs !bg-[var(--blue)] !text-[var(--white)] !border-[var(--ink)] hover:!bg-[var(--yellow)] hover:!text-[var(--ink)] disabled:opacity-40"
                     title={
-                      !isApproved
+                      lead.status === 'refused'
+                        ? 'Entreprise annulée / bloquée'
+                        : !isApproved
                         ? '1 approbation nécessaire avant programmation'
                         : "Programmer l'envoi pour cette date"
                     }
@@ -733,20 +759,23 @@ export default function EmailInspectorModal({
                 </div>
               </div>
 
-              {/* Accept / Refuse / Send Now Buttons */}
+              {/* Accept / Cancel / Send Now Buttons */}
               <div className="flex items-center justify-between pt-3 border-t-2 border-[var(--ink)]">
                 <div className="flex gap-2">
                   {/* Single Person Accept Button */}
                   <button
                     type="button"
                     onClick={handleAcceptClick}
+                    disabled={lead.status === 'refused'}
                     className={`btn-transit !py-2 !px-3 !text-xs ${
                       isApproved
                         ? '!bg-emerald-300 !text-[var(--ink)] !border-[var(--ink)] font-black ring-2 ring-[var(--ink)]'
-                        : '!bg-[var(--white)] !text-[var(--ink)] !border-[var(--ink)] hover:!bg-emerald-300'
+                        : '!bg-[var(--white)] !text-[var(--ink)] !border-[var(--ink)] hover:!bg-emerald-300 disabled:opacity-30'
                     }`}
                     title={
-                      isApproved
+                      lead.status === 'refused'
+                        ? 'Entreprise annulée / bloquée'
+                        : isApproved
                         ? `Validé (${lead.approvals?.[0]?.reviewerName || currentReviewer}) - Cliquez pour révoquer`
                         : `Valider en tant que ${currentReviewer || 'examinateur'}`
                     }
@@ -762,14 +791,19 @@ export default function EmailInspectorModal({
                   <button
                     type="button"
                     onClick={handleRefuseClick}
-                    className={`btn-transit !py-2 !px-3 !text-xs ${
+                    className={`btn-transit !py-2 !px-3 !text-xs font-black ${
                       lead.status === 'refused'
-                        ? '!bg-red-600 !text-white !border-[var(--ink)]'
+                        ? '!bg-red-600 !text-white !border-[var(--ink)] ring-2 ring-red-700'
                         : '!bg-[var(--white)] !text-[var(--ink)] !border-[var(--ink)] hover:!bg-red-200'
                     }`}
+                    title={
+                      lead.status === 'refused'
+                        ? `Entreprise annulée (${lead.refusedBy?.reviewerName || 'par vous'}) - Cliquez pour débloquer`
+                        : 'Annuler / Bloquer cette entreprise (aucun e-mail ne sera généré ni envoyé)'
+                    }
                   >
-                    <XCircle className="w-4 h-4 stroke-[3]" />
-                    <span>REFUSER</span>
+                    <Ban className="w-4 h-4 stroke-[2.5]" />
+                    <span>{lead.status === 'refused' ? 'ANNULÉ (DÉBLOQUER)' : 'ANNULER'}</span>
                   </button>
                 </div>
 
@@ -777,9 +811,13 @@ export default function EmailInspectorModal({
                   <button
                     type="button"
                     onClick={handleOpenInGmail}
-                    disabled={!recipient || !body.trim()}
+                    disabled={!recipient || !body.trim() || lead.status === 'refused'}
                     className="btn-transit !bg-[var(--white)] !text-[var(--ink)] !border-[var(--ink)] hover:!bg-[#E6E8E2] !py-2 !px-3 !text-xs !font-black disabled:opacity-40"
-                    title="Ouvrir directement dans Gmail avec le destinataire, objet et message pré-remplis"
+                    title={
+                      lead.status === 'refused'
+                        ? 'Entreprise annulée / bloquée'
+                        : 'Ouvrir directement dans Gmail avec le destinataire, objet et message pré-remplis'
+                    }
                   >
                     <ExternalLink className="w-3.5 h-3.5 stroke-[2.5]" />
                     <span>OUVRIR GMAIL</span>
@@ -788,10 +826,12 @@ export default function EmailInspectorModal({
                   <button
                     type="button"
                     onClick={handleSendImmediately}
-                    disabled={!recipient || !body.trim() || !isApproved}
+                    disabled={!recipient || !body.trim() || !isApproved || lead.status === 'refused'}
                     className="btn-transit yellow !py-2 !px-4 !text-xs !font-black !border-[var(--ink)] disabled:opacity-40"
                     title={
-                      !isApproved
+                      lead.status === 'refused'
+                        ? 'Entreprise annulée / bloquée : envoi impossible'
+                        : !isApproved
                         ? '1 approbation nécessaire avant transmission immédiate'
                         : 'Transmettre automatiquement via Gmail SMTP'
                     }

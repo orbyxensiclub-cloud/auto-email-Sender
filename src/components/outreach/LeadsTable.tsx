@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   AlertCircle,
+  Ban,
 } from 'lucide-react';
 import { CompanyLead } from '@/lib/sheets';
 
@@ -72,9 +73,9 @@ export default function LeadsTable({
       case 'refused':
         return (
           <div className="flex flex-col gap-0.5">
-            <span className="tag-hot !bg-[#FFE8E8] !text-red-900 border-2 border-[var(--ink)]">
-              <XCircle className="w-3 h-3 text-red-600 stroke-[3]" />
-              <span>REFUSÉ</span>
+            <span className="tag-hot !bg-[#FFE8E8] !text-red-900 border-2 border-red-800">
+              <Ban className="w-3 h-3 text-red-600 stroke-[3]" />
+              <span>ANNULÉ</span>
             </span>
             {lead.refusedBy && (
               <span className="text-[10px] font-mono text-red-700 truncate max-w-[170px]">
@@ -146,6 +147,7 @@ export default function LeadsTable({
               paginatedLeads.map((lead) => {
                 const isGenerating = generatingId === lead.id || lead.status === 'generating';
                 const hasDraft = !!lead.generatedSubject;
+                const isCancelled = lead.status === 'refused';
                 const hasCurrentReviewerApproved = lead.approvals?.some(
                   (a) => a.reviewerName.toLowerCase().trim() === currentReviewer?.toLowerCase().trim()
                 );
@@ -153,11 +155,21 @@ export default function LeadsTable({
                 return (
                   <tr
                     key={lead.id}
-                    className="hover:bg-[var(--yellow)]/10 transition-colors group"
+                    className={`transition-colors group ${
+                      isCancelled
+                        ? 'bg-red-50/40 hover:bg-red-100/40 opacity-80'
+                        : 'hover:bg-[var(--yellow)]/10'
+                    }`}
                   >
                     {/* Company */}
                     <td className="py-3 px-4 max-w-[260px]">
-                      <div className="font-extrabold text-sm text-[var(--ink)] uppercase group-hover:text-[var(--blue)] transition-colors truncate">
+                      <div
+                        className={`font-extrabold text-sm uppercase transition-colors truncate ${
+                          isCancelled
+                            ? 'line-through text-red-900/60'
+                            : 'text-[var(--ink)] group-hover:text-[var(--blue)]'
+                        }`}
+                      >
                         {lead.name}
                       </div>
                       {lead.contactPerson && (
@@ -224,9 +236,17 @@ export default function LeadsTable({
                         {/* Generate AI Button */}
                         <button
                           onClick={() => onGenerateEmail(lead)}
-                          disabled={isGenerating}
+                          disabled={isCancelled || isGenerating || !lead.email}
                           className="p-1.5 border-2 border-[var(--ink)] bg-[var(--white)] text-[var(--ink)] hover:bg-[var(--yellow)] disabled:opacity-30 transition-colors"
-                          title="Générer avec Gemini (modèle ORBYX ML Challenge 2.0)"
+                          title={
+                            isCancelled
+                              ? 'Entreprise annulée / bloquée : aucun e-mail ne sera généré'
+                              : !lead.email
+                              ? 'E-mail manquant'
+                              : hasDraft
+                              ? 'Régénérer avec Gemini'
+                              : 'Générer avec Gemini'
+                          }
                         >
                           <Sparkles className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
                         </button>
@@ -234,14 +254,16 @@ export default function LeadsTable({
                         {/* Accept Button */}
                         <button
                           onClick={() => onAccept(lead)}
-                          disabled={!hasDraft}
+                          disabled={isCancelled || !hasDraft}
                           className={`p-1.5 border-2 border-[var(--ink)] transition-colors ${
                             hasCurrentReviewerApproved || lead.status === 'accepted'
                               ? 'bg-emerald-300 text-[var(--ink)] ring-2 ring-[var(--ink)]'
                               : 'bg-[var(--white)] text-[var(--ink)] hover:bg-emerald-300 disabled:opacity-30'
                           }`}
                           title={
-                            hasCurrentReviewerApproved || lead.status === 'accepted'
+                            isCancelled
+                              ? 'Entreprise annulée / bloquée'
+                              : hasCurrentReviewerApproved || lead.status === 'accepted'
                               ? `Validé (${lead.approvals?.[0]?.reviewerName || currentReviewer}) - Cliquez pour révoquer`
                               : `Valider cet e-mail (1 approbation requise)`
                           }
@@ -249,18 +271,21 @@ export default function LeadsTable({
                           <Check className="w-4 h-4 stroke-[3]" />
                         </button>
 
-                        {/* Refuse Button */}
+                        {/* Annuler / Bloquer Button */}
                         <button
                           onClick={() => onRefuse(lead)}
-                          disabled={!hasDraft}
                           className={`p-1.5 border-2 border-[var(--ink)] transition-colors ${
-                            lead.status === 'refused'
-                              ? 'bg-red-600 text-white'
-                              : 'bg-[var(--white)] text-[var(--ink)] hover:bg-red-200 disabled:opacity-30'
+                            isCancelled
+                              ? 'bg-red-600 text-white ring-2 ring-red-700'
+                              : 'bg-[var(--white)] text-[var(--ink)] hover:bg-red-200'
                           }`}
-                          title="Refuser l'e-mail"
+                          title={
+                            isCancelled
+                              ? `Entreprise annulée (${lead.refusedBy?.reviewerName || 'par vous'}) - Cliquez pour débloquer`
+                              : 'Annuler / Bloquer cette entreprise (aucun e-mail ne sera généré ni envoyé)'
+                          }
                         >
-                          <XCircle className="w-4 h-4 stroke-[3]" />
+                          <Ban className="w-4 h-4 stroke-[2.5]" />
                         </button>
 
                         {/* Open Inspector */}
