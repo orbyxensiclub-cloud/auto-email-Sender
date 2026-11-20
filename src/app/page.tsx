@@ -13,6 +13,7 @@ import GlobalDirectivesModal from '@/components/outreach/GlobalDirectivesModal';
 import ReviewerModal from '@/components/outreach/ReviewerModal';
 import GlobalAttachmentsModal from '@/components/outreach/GlobalAttachmentsModal';
 import ShareSessionModal, { decodeSessionState } from '@/components/outreach/ShareSessionModal';
+import EmailCheckerDashboard from '@/components/outreach/EmailCheckerDashboard';
 import { CompanyLead, CategoryKey, ApprovalRecord } from '@/lib/sheets';
 import type { StoredAttachment } from '@/lib/email-attachments';
 import { EventDetails, defaultEventDetails } from '@/lib/gemini';
@@ -54,6 +55,7 @@ export default function HomePage() {
   const [selectedCategory, setSelectedCategory] = useState<CategoryKey>('ensi');
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeMainTab, setActiveMainTab] = useState<'outreach' | 'tracker'>('outreach');
 
   // Modals
   const [selectedLead, setSelectedLead] = useState<CompanyLead | null>(null);
@@ -1581,81 +1583,95 @@ export default function HomePage() {
         globalAttachmentsCount={globalAttachments.filter((a) => a.enabled).length}
         onOpenAttachmentsModal={() => setIsAttachmentsModalOpen(true)}
         onOpenShareModal={() => setIsShareModalOpen(true)}
+        activeTab={activeMainTab}
+        onSelectTab={setActiveMainTab}
       />
 
       {/* Main Workspace */}
       <main className="flex-1 w-full max-w-[1360px] mx-auto px-4 sm:px-8 py-6 space-y-5">
-        {/* Banner Alert when API key is missing */}
-        {!apiKey && !apiKeysPool.some((k) => k.enabled && k.key.trim().length > 0) && (
-          <div className="p-4 bg-[var(--yellow)] text-[var(--ink)] border-2 border-[var(--ink)] shadow-[4px_4px_0_var(--ink)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-[var(--ink)] text-[var(--yellow)]">
-                <AlertTriangle className="w-5 h-5 stroke-[2.5]" />
+        {activeMainTab === 'tracker' ? (
+          <EmailCheckerDashboard
+            leads={leads}
+            onOpenInspector={(lead) => {
+              setSelectedLead(lead);
+              setIsInspectorOpen(true);
+            }}
+          />
+        ) : (
+          <>
+            {/* Banner Alert when API key is missing */}
+            {!apiKey && !apiKeysPool.some((k) => k.enabled && k.key.trim().length > 0) && (
+              <div className="p-4 bg-[var(--yellow)] text-[var(--ink)] border-2 border-[var(--ink)] shadow-[4px_4px_0_var(--ink)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-[var(--ink)] text-[var(--yellow)]">
+                    <AlertTriangle className="w-5 h-5 stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-tight">CLÉ API GEMINI NON CONFIGURÉE</h3>
+                    <p className="text-xs font-mono text-[var(--ink)]/90 uppercase font-semibold">
+                      Pour générer les e-mails de sponsoring du ML Challenge 2.0 et dialoguer avec le copilote IA, veuillez connecter vos clés API Gemini.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsApiKeyModalOpen(true)}
+                  className="btn-transit ink !py-2 !px-4 !text-xs !font-black whitespace-nowrap"
+                >
+                  AJOUTER MA CLÉ API
+                </button>
               </div>
-              <div>
-                <h3 className="text-sm font-black uppercase tracking-tight">CLÉ API GEMINI NON CONFIGURÉE</h3>
-                <p className="text-xs font-mono text-[var(--ink)]/90 uppercase font-semibold">
-                  Pour générer les e-mails de sponsoring du ML Challenge 2.0 et dialoguer avec le copilote IA, veuillez connecter vos clés API Gemini.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setIsApiKeyModalOpen(true)}
-              className="btn-transit ink !py-2 !px-4 !text-xs !font-black whitespace-nowrap"
-            >
-              AJOUTER MA CLÉ API
-            </button>
-          </div>
+            )}
+
+            {/* Global Statistics Bar */}
+            <StatsBar leads={leads} />
+
+            {/* Categories, Filters, Search, Scheduling & Send All */}
+            <CategoryTabs
+              selectedCategory={selectedCategory}
+              onSelectCategory={(cat) => {
+                setSelectedCategory(cat);
+                setStatusFilter('all');
+              }}
+              statusFilter={statusFilter}
+              onSelectStatusFilter={setStatusFilter}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              counts={categoryCounts}
+              onAcceptAll={handleAcceptAll}
+              onScheduleAllAccepted={handleScheduleAllAccepted}
+              onBatchGenerate={handleBatchGenerate}
+              batchGenerating={batchGenerating}
+              batchProgress={batchProgress}
+              selectedScheduleTime={selectedScheduleTime}
+              onScheduleTimeChange={setSelectedScheduleTime}
+              onSendAll={handleSendAll}
+              batchSending={batchSending}
+              batchSendProgress={batchSendProgress}
+              acceptedCount={acceptedCount}
+            />
+
+            {/* Leads Table */}
+            <LeadsTable
+              leads={filteredLeads}
+              onOpenInspector={(lead) => {
+                setSelectedLead(lead);
+                setIsInspectorOpen(true);
+              }}
+              onGenerateEmail={handleGenerateEmail}
+              onAccept={handleAcceptLead}
+              onRefuse={handleRefuseLead}
+              generatingId={generatingId}
+              currentReviewer={currentReviewer}
+              onBatchGenerateSelected={handleBatchGenerateSelected}
+              onAcceptSelected={handleAcceptSelected}
+              onCancelSelected={handleCancelSelected}
+              onScheduleSelected={handleScheduleSelected}
+              onSendSelected={handleSendSelected}
+              batchGenerating={batchGenerating}
+              batchSending={batchSending}
+            />
+          </>
         )}
-
-        {/* Global Statistics Bar */}
-        <StatsBar leads={leads} />
-
-        {/* Categories, Filters, Search, Scheduling & Send All */}
-        <CategoryTabs
-          selectedCategory={selectedCategory}
-          onSelectCategory={(cat) => {
-            setSelectedCategory(cat);
-            setStatusFilter('all');
-          }}
-          statusFilter={statusFilter}
-          onSelectStatusFilter={setStatusFilter}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          counts={categoryCounts}
-          onAcceptAll={handleAcceptAll}
-          onScheduleAllAccepted={handleScheduleAllAccepted}
-          onBatchGenerate={handleBatchGenerate}
-          batchGenerating={batchGenerating}
-          batchProgress={batchProgress}
-          selectedScheduleTime={selectedScheduleTime}
-          onScheduleTimeChange={setSelectedScheduleTime}
-          onSendAll={handleSendAll}
-          batchSending={batchSending}
-          batchSendProgress={batchSendProgress}
-          acceptedCount={acceptedCount}
-        />
-
-        {/* Leads Table */}
-        <LeadsTable
-          leads={filteredLeads}
-          onOpenInspector={(lead) => {
-            setSelectedLead(lead);
-            setIsInspectorOpen(true);
-          }}
-          onGenerateEmail={handleGenerateEmail}
-          onAccept={handleAcceptLead}
-          onRefuse={handleRefuseLead}
-          generatingId={generatingId}
-          currentReviewer={currentReviewer}
-          onBatchGenerateSelected={handleBatchGenerateSelected}
-          onAcceptSelected={handleAcceptSelected}
-          onCancelSelected={handleCancelSelected}
-          onScheduleSelected={handleScheduleSelected}
-          onSendSelected={handleSendSelected}
-          batchGenerating={batchGenerating}
-          batchSending={batchSending}
-        />
       </main>
 
       {/* Inspector & Gemini Chat Modal */}

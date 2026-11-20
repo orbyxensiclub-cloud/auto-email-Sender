@@ -1,7 +1,20 @@
 'use client';
 
 import React from 'react';
-import { Sparkles, Key, Calendar, FileSpreadsheet, RefreshCw, ExternalLink, MessageSquareText, UserCheck, Paperclip, Share2 } from 'lucide-react';
+import {
+  Sparkles,
+  Key,
+  Calendar,
+  FileSpreadsheet,
+  RefreshCw,
+  ExternalLink,
+  MessageSquareText,
+  UserCheck,
+  Paperclip,
+  Share2,
+  Send,
+  CheckCircle2,
+} from 'lucide-react';
 
 interface NavbarProps {
   sheetUrl: string;
@@ -18,6 +31,8 @@ interface NavbarProps {
   globalAttachmentsCount?: number;
   onOpenAttachmentsModal: () => void;
   onOpenShareModal: () => void;
+  activeTab?: 'outreach' | 'tracker';
+  onSelectTab?: (tab: 'outreach' | 'tracker') => void;
 }
 
 export default function Navbar({
@@ -35,6 +50,8 @@ export default function Navbar({
   globalAttachmentsCount = 0,
   onOpenAttachmentsModal,
   onOpenShareModal,
+  activeTab = 'outreach',
+  onSelectTab,
 }: NavbarProps) {
   return (
     <header className="band sticky top-0 z-40 w-full border-b-2 border-[var(--ink)] shadow-md">
@@ -159,6 +176,44 @@ export default function Navbar({
               className={`w-2 h-2 rounded-full ${hasApiKey ? 'bg-emerald-600' : 'bg-red-600'}`}
             />
           </button>
+        </div>
+      </div>
+
+      {/* View Switcher Tabs (Campagne d'Envoi vs Suivi & Audit Retours) */}
+      <div className="bg-[var(--ground)] border-t-2 border-[var(--ink)]">
+        <div className="max-w-[1360px] mx-auto px-4 sm:px-8 flex items-center justify-between py-2 gap-2 overflow-x-auto">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onSelectTab?.('outreach')}
+              className={`px-3 sm:px-4 py-1.5 text-xs font-mono font-black uppercase transition-all flex items-center gap-2 border-2 ${
+                activeTab === 'outreach'
+                  ? 'bg-[var(--ink)] text-[var(--yellow)] border-[var(--ink)] shadow-[2px_2px_0_var(--ink)]'
+                  : 'bg-[var(--white)] text-[var(--ink)] border-[var(--ink)]/40 hover:border-[var(--ink)]'
+              }`}
+            >
+              <Send className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>1. CAMPAGNE D&apos;ENVOI</span>
+            </button>
+
+            <button
+              onClick={() => onSelectTab?.('tracker')}
+              className={`px-3 sm:px-4 py-1.5 text-xs font-mono font-black uppercase transition-all flex items-center gap-2 border-2 ${
+                activeTab === 'tracker'
+                  ? 'bg-[var(--ink)] text-[var(--yellow)] border-[var(--ink)] shadow-[2px_2px_0_var(--ink)]'
+                  : 'bg-[var(--white)] text-[var(--ink)] border-[var(--ink)]/40 hover:border-[var(--ink)]'
+              }`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" />
+              <span>2. SUIVI & AUDIT RETOURS (GMAIL)</span>
+              <span className="px-1.5 py-0.2 bg-[var(--yellow)] text-[var(--ink)] text-[9px] font-black tracking-normal border border-[var(--ink)]">
+                PYTHON AUDITOR
+              </span>
+            </button>
+          </div>
+
+          <div className="hidden lg:flex items-center gap-2 text-[10px] font-mono text-[var(--grey)] font-bold uppercase">
+            <span>BOUNCES (5XX/4XX) • RÉPONSES • COLLÈGUES • ABSENCE</span>
+          </div>
         </div>
       </div>
     </header>

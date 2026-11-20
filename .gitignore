@@ -42,3 +42,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Google OAuth & campaign scripts outputs
+credentials.json
+token.json
+scripts/credentials.json
+scripts/token.json
+scripts/*.csv
+results.csv
+to_retry.csv
+to_clean.csv
+replied.csv
+recipients.csv
