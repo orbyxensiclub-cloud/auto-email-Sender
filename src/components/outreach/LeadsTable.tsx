@@ -645,27 +645,27 @@ export default function LeadsTable({
                 value={scheduleDateTime}
                 onChange={(e) => setScheduleDateTime(e.target.value)}
                 className="bg-black/60 text-white text-[11px] font-mono px-2 py-1 border border-white/30 outline-none"
-                title="Date et heure de début de programmation"
+                title="Date et heure de programmation (envoi simultané)"
               />
               <button
                 onClick={() => onScheduleSelected?.(selectedLeadsList, scheduleDateTime)}
                 className="btn-transit !bg-[var(--yellow)] !text-[var(--ink)] !border-[var(--white)] !py-1 !px-2.5 !text-xs !font-black uppercase flex items-center gap-1"
-                title="Programmer l'envoi pour les entreprises sélectionnées"
+                title="Programmer l'envoi en simultané pour les entreprises sélectionnées"
               >
                 <Clock className="w-3.5 h-3.5 stroke-[2.5]" />
                 <span>PROGRAMMER</span>
               </button>
             </div>
 
-            {/* 5. Direct send immediately */}
+            {/* 5. Direct send immediately in parallel */}
             <button
               onClick={() => onSendSelected?.(selectedLeadsList)}
               disabled={batchSending}
               className="btn-transit !bg-[var(--white)] !text-[var(--ink)] !border-[var(--white)] hover:!bg-[var(--yellow)] !py-1.5 !px-3 !text-xs !font-black uppercase flex items-center gap-1.5 shadow-[2px_2px_0_var(--yellow)]"
-              title="Envoyer immédiatement via SMTP pour les entreprises sélectionnées"
+              title="Envoyer immédiatement en parallèle via SMTP (tous les e-mails partent en même temps)"
             >
               <Send className={`w-3.5 h-3.5 ${batchSending ? 'animate-pulse' : ''}`} />
-              <span>ENVOI DIRECT ({selectedIds.size})</span>
+              <span>ENVOI SIMULTANÉ ({selectedIds.size})</span>
             </button>
           </div>
         </div>

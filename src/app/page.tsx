@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Navbar from '@/components/outreach/Navbar';
 import StatsBar from '@/components/outreach/StatsBar';
 import CategoryTabs from '@/components/outreach/CategoryTabs';
@@ -355,50 +355,87 @@ export default function HomePage() {
     loadSheetData(sheetFallbackUrl);
   };
 
-  // Automated background scheduler ticker (runs every 10 seconds)
+  const inFlightSendingRef = useRef<Set<string>>(new Set());
+
+  // Automated background scheduler ticker (runs every 5 seconds)
+  // Dispatches all due scheduled emails in parallel at the same time
   useEffect(() => {
     const interval = setInterval(async () => {
       const now = new Date();
-      const scheduledLeads = leads.filter(
-        (l) => l.status === 'scheduled' && l.scheduledTime && new Date(l.scheduledTime) <= now
+      const dueLeads = leads.filter(
+        (l) =>
+          l.status === 'scheduled' &&
+          l.scheduledTime &&
+          new Date(l.scheduledTime) <= now &&
+          l.email &&
+          l.generatedSubject &&
+          l.generatedBody &&
+          !inFlightSendingRef.current.has(l.id)
       );
 
-      for (const lead of scheduledLeads) {
-        try {
-          const res = await fetch('/api/email/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              to: lead.email,
-              subject: lead.generatedSubject,
-              emailBody: lead.generatedBody,
-              senderName: eventDetails.organizerName,
-              senderEmail: eventDetails.organizerEmail,
-              smtpPass,
-              customAttachments: lead.customAttachments,
-              excludeGlobal: lead.excludeGlobalAttachments,
-            }),
-          });
-          if (res.ok) {
-            setLeads((prev) =>
-              prev.map((item) =>
-                item.id === lead.id
-                  ? {
-                      ...item,
-                      status: 'sent',
-                      sentAt: new Date().toISOString(),
-                      scheduledTime: undefined,
-                    }
-                  : item
-              )
-            );
-            showToast('E-mail programmé envoyé', `Envoyé avec succès à ${lead.name} (${lead.email})`, 'success');
+      if (dueLeads.length === 0) return;
+
+      // Mark all due leads as in-flight to prevent duplicate execution
+      dueLeads.forEach((l) => inFlightSendingRef.current.add(l.id));
+
+      showToast(
+        'Envoi programmé en simultané',
+        `Expédition en parallèle de ${dueLeads.length} e-mail(s) arrivés à échéance...`,
+        'info'
+      );
+
+      let sentCount = 0;
+      await Promise.all(
+        dueLeads.map(async (lead) => {
+          try {
+            const res = await fetch('/api/email/send', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                to: lead.email,
+                subject: lead.generatedSubject,
+                emailBody: lead.generatedBody,
+                senderName: eventDetails.organizerName,
+                senderEmail: eventDetails.organizerEmail,
+                smtpPass,
+                customAttachments: lead.customAttachments,
+                excludeGlobal: lead.excludeGlobalAttachments,
+              }),
+            });
+
+            if (res.ok) {
+              sentCount++;
+              setLeads((prev) =>
+                prev.map((item) =>
+                  item.id === lead.id
+                    ? {
+                        ...item,
+                        status: 'sent',
+                        sentAt: new Date().toISOString(),
+                        scheduledTime: undefined,
+                      }
+                    : item
+                )
+              );
+            } else {
+              console.error(`Error sending scheduled email to ${lead.name}`);
+            }
+          } catch (e: any) {
+            console.error(`Error sending scheduled email to ${lead.name}:`, e);
+          } finally {
+            inFlightSendingRef.current.delete(lead.id);
           }
-        } catch (e: any) {
-          console.error(`Error sending scheduled email to ${lead.name}:`, e);
-        }
+        })
+      );
+
+      if (sentCount > 0) {
+        showToast(
+          'Envoi programmé réussi',
+          `${sentCount} e-mail(s) expédié(s) en parallèle en même temps avec succès.`,
+          'success'
+        );
       }
-    }, 10000);
+    }, 5000);
 
     return () => clearInterval(interval);
   }, [leads, eventDetails, smtpPass]);
@@ -995,7 +1032,7 @@ export default function HomePage() {
     );
   };
 
-  // Schedule all accepted leads starting from the user-selected time
+  // Schedule all accepted leads for the same target time (all sent in parallel when due)
   const handleScheduleAllAccepted = () => {
     const acceptedLeads = filteredLeads.filter((l) => l.status === 'accepted' && l.email);
     if (acceptedLeads.length === 0) {
@@ -1009,21 +1046,16 @@ export default function HomePage() {
       return;
     }
 
-    let offsetMinutes = 0;
-    const scheduledMap = new Map<string, string>();
-    for (const lead of acceptedLeads) {
-      const scheduledDate = new Date(startTime.getTime() + offsetMinutes * 60000);
-      scheduledMap.set(lead.id, scheduledDate.toISOString());
-      offsetMinutes += 2;
-    }
+    const targetIsoTime = startTime.toISOString();
+    const acceptedIds = new Set(acceptedLeads.map((l) => l.id));
 
     setLeads((prev) =>
       prev.map((item) => {
-        if (scheduledMap.has(item.id)) {
+        if (acceptedIds.has(item.id)) {
           return {
             ...item,
             status: 'scheduled',
-            scheduledTime: scheduledMap.get(item.id),
+            scheduledTime: targetIsoTime,
           };
         }
         return item;
@@ -1031,13 +1063,13 @@ export default function HomePage() {
     );
 
     showToast(
-      'Programmation en masse réussie',
-      `${acceptedLeads.length} e-mails programmés à partir du ${startTime.toLocaleString('fr-FR')} (intervalle de 2 min).`,
+      'Programmation en simultané réussie',
+      `${acceptedLeads.length} e-mails programmés pour le ${startTime.toLocaleString('fr-FR')} (envoi en parallèle en même temps).`,
       'success'
     );
   };
 
-  // SEND ALL BUTTON: Send all accepted leads immediately via Gmail SMTP
+  // SEND ALL BUTTON: Send all accepted leads immediately in parallel all at the same time
   const handleSendAll = async () => {
     let readyLeads = filteredLeads.filter(
       (l) => l.status === 'accepted' && l.email && l.generatedSubject && l.generatedBody
@@ -1048,7 +1080,7 @@ export default function HomePage() {
       const drafts = filteredLeads.filter((l) => (l.status === 'draft' || !!l.generatedSubject) && l.email);
       if (drafts.length > 0) {
         const confirmAccept = window.confirm(
-          `Il y a ${drafts.length} brouillons générés non validés. Voulez-vous les valider (1 approbation) et les expédier immédiatement ?`
+          `Il y a ${drafts.length} brouillons générés non validés. Voulez-vous les valider (1 approbation) et les expédier immédiatement en parallèle ?`
         );
         if (confirmAccept) {
           const reviewer = currentReviewer?.trim() || 'Jasser Ben Jomaa';
@@ -1072,64 +1104,72 @@ export default function HomePage() {
     }
 
     const confirmSend = window.confirm(
-      `Confirmez-vous l'expédition immédiate de ${readyLeads.length} e-mails via votre compte Gmail (${eventDetails.organizerEmail}) ?`
+      `Confirmez-vous l'expédition immédiate EN PARALLÈLE de ${readyLeads.length} e-mails via votre compte Gmail (${eventDetails.organizerEmail}) ? Tous les e-mails partiront en même temps.`
     );
     if (!confirmSend) return;
 
     setBatchSending(true);
     setBatchSendProgress({ current: 0, total: readyLeads.length });
 
+    showToast(
+      'Expédition parallèle lancée',
+      `Envoi simultané de ${readyLeads.length} e-mails en cours...`,
+      'info'
+    );
+
     let sentCount = 0;
-    for (let i = 0; i < readyLeads.length; i++) {
-      const lead = readyLeads[i];
-      try {
-        const res = await fetch('/api/email/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: lead.email,
-            subject: lead.generatedSubject,
-            emailBody: lead.generatedBody,
-            senderName: eventDetails.organizerName,
-            senderEmail: eventDetails.organizerEmail,
-            smtpPass,
-            customAttachments: lead.customAttachments,
-            excludeGlobal: lead.excludeGlobalAttachments,
-          }),
-        });
+    let completedCount = 0;
 
-        if (res.ok) {
-          sentCount++;
-          setLeads((prev) =>
-            prev.map((item) =>
-              item.id === lead.id
-                ? {
-                    ...item,
-                    status: 'sent',
-                    sentAt: new Date().toISOString(),
-                    scheduledTime: undefined,
-                  }
-                : item
-            )
-          );
-        } else {
-          const errData = await res.json().catch(() => ({}));
-          console.error(`Error sending to ${lead.name}:`, errData);
+    // Dispatch all emails concurrently in parallel all at the same time!
+    await Promise.all(
+      readyLeads.map(async (lead) => {
+        try {
+          const res = await fetch('/api/email/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: lead.email,
+              subject: lead.generatedSubject,
+              emailBody: lead.generatedBody,
+              senderName: eventDetails.organizerName,
+              senderEmail: eventDetails.organizerEmail,
+              smtpPass,
+              customAttachments: lead.customAttachments,
+              excludeGlobal: lead.excludeGlobalAttachments,
+            }),
+          });
+
+          if (res.ok) {
+            sentCount++;
+            setLeads((prev) =>
+              prev.map((item) =>
+                item.id === lead.id
+                  ? {
+                      ...item,
+                      status: 'sent',
+                      sentAt: new Date().toISOString(),
+                      scheduledTime: undefined,
+                    }
+                  : item
+              )
+            );
+          } else {
+            const errData = await res.json().catch(() => ({}));
+            console.error(`Error sending to ${lead.name}:`, errData);
+          }
+        } catch (err) {
+          console.error(`Parallel send error for ${lead.name}:`, err);
+        } finally {
+          completedCount++;
+          setBatchSendProgress({ current: completedCount, total: readyLeads.length });
         }
-      } catch (err) {
-        console.error(`Batch send error for ${lead.name}:`, err);
-      }
-
-      setBatchSendProgress({ current: i + 1, total: readyLeads.length });
-      if (i < readyLeads.length - 1) {
-        await new Promise((r) => setTimeout(r, 1200));
-      }
-    }
+      })
+    );
 
     setBatchSending(false);
     showToast(
-      'Envoi groupé terminé',
-      `${sentCount} sur ${readyLeads.length} e-mails expédiés avec succès via Gmail SMTP.`,
+      'Envoi groupé en parallèle terminé',
+      `${sentCount} sur ${readyLeads.length} e-mails expédiés en simultané avec succès via Gmail SMTP.`,
       'success'
     );
   };
@@ -1269,7 +1309,7 @@ export default function HomePage() {
     }
   };
 
-  // Schedule selected leads
+  // Schedule selected leads for the same target time (all sent in parallel when due)
   const handleScheduleSelected = (targetLeads: CompanyLead[], scheduleTimeStr: string) => {
     const actionable = targetLeads.filter((l) => l.status !== 'refused' && l.email);
 
@@ -1290,22 +1330,16 @@ export default function HomePage() {
 
     const reviewer = currentReviewer?.trim() || 'Jasser Ben Jomaa';
     const nowTime = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-
-    let offsetMinutes = 0;
-    const scheduleMap = new Map<string, string>();
-    for (const lead of actionable) {
-      const scheduledDate = new Date(startTime.getTime() + offsetMinutes * 60000);
-      scheduleMap.set(lead.id, scheduledDate.toISOString());
-      offsetMinutes += 2;
-    }
+    const targetIsoTime = startTime.toISOString();
+    const actionableIds = new Set(actionable.map((l) => l.id));
 
     setLeads((prev) =>
       prev.map((item) => {
-        if (scheduleMap.has(item.id)) {
+        if (actionableIds.has(item.id)) {
           return {
             ...item,
             status: 'scheduled',
-            scheduledTime: scheduleMap.get(item.id),
+            scheduledTime: targetIsoTime,
             approvals:
               item.approvals && item.approvals.length > 0
                 ? item.approvals
@@ -1317,13 +1351,13 @@ export default function HomePage() {
     );
 
     showToast(
-      'Programmation réussie',
-      `${actionable.length} e-mail(s) programmé(s) à partir du ${startTime.toLocaleString('fr-FR')} (intervalle 2 min).`,
+      'Programmation en simultané réussie',
+      `${actionable.length} e-mail(s) sélectionné(s) programmé(s) pour le ${startTime.toLocaleString('fr-FR')} (envoi en parallèle en même temps).`,
       'success'
     );
   };
 
-  // Send selected leads immediately
+  // Send selected leads immediately in parallel all at the same time
   const handleSendSelected = async (targetLeads: CompanyLead[]) => {
     const readyLeads = targetLeads.filter(
       (l) => l.status !== 'refused' && l.email && l.generatedSubject && l.generatedBody
@@ -1344,64 +1378,72 @@ export default function HomePage() {
     }
 
     const confirmSend = window.confirm(
-      `Confirmez-vous l'expédition immédiate de ${readyLeads.length} e-mail(s) sélectionné(s) via votre compte Gmail (${eventDetails.organizerEmail}) ?`
+      `Confirmez-vous l'expédition immédiate EN PARALLÈLE de ${readyLeads.length} e-mail(s) sélectionné(s) via votre compte Gmail (${eventDetails.organizerEmail}) ? Tous les e-mails partiront en même temps.`
     );
     if (!confirmSend) return;
 
     setBatchSending(true);
     setBatchSendProgress({ current: 0, total: readyLeads.length });
 
+    showToast(
+      'Expédition parallèle lancée',
+      `Envoi simultané de ${readyLeads.length} e-mails sélectionnés en cours...`,
+      'info'
+    );
+
     let sentCount = 0;
-    for (let i = 0; i < readyLeads.length; i++) {
-      const lead = readyLeads[i];
-      try {
-        const res = await fetch('/api/email/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: lead.email,
-            subject: lead.generatedSubject,
-            emailBody: lead.generatedBody,
-            senderName: eventDetails.organizerName,
-            senderEmail: eventDetails.organizerEmail,
-            smtpPass,
-            customAttachments: lead.customAttachments,
-            excludeGlobal: lead.excludeGlobalAttachments,
-          }),
-        });
+    let completedCount = 0;
 
-        if (res.ok) {
-          sentCount++;
-          setLeads((prev) =>
-            prev.map((item) =>
-              item.id === lead.id
-                ? {
-                    ...item,
-                    status: 'sent',
-                    sentAt: new Date().toISOString(),
-                    scheduledTime: undefined,
-                  }
-                : item
-            )
-          );
-        } else {
-          const errData = await res.json().catch(() => ({}));
-          console.error(`Error sending to ${lead.name}:`, errData);
+    // Dispatch all selected emails concurrently in parallel all at the same time!
+    await Promise.all(
+      readyLeads.map(async (lead) => {
+        try {
+          const res = await fetch('/api/email/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: lead.email,
+              subject: lead.generatedSubject,
+              emailBody: lead.generatedBody,
+              senderName: eventDetails.organizerName,
+              senderEmail: eventDetails.organizerEmail,
+              smtpPass,
+              customAttachments: lead.customAttachments,
+              excludeGlobal: lead.excludeGlobalAttachments,
+            }),
+          });
+
+          if (res.ok) {
+            sentCount++;
+            setLeads((prev) =>
+              prev.map((item) =>
+                item.id === lead.id
+                  ? {
+                      ...item,
+                      status: 'sent',
+                      sentAt: new Date().toISOString(),
+                      scheduledTime: undefined,
+                    }
+                  : item
+              )
+            );
+          } else {
+            const errData = await res.json().catch(() => ({}));
+            console.error(`Error sending to ${lead.name}:`, errData);
+          }
+        } catch (err) {
+          console.error(`Send error for ${lead.name}:`, err);
+        } finally {
+          completedCount++;
+          setBatchSendProgress({ current: completedCount, total: readyLeads.length });
         }
-      } catch (err) {
-        console.error(`Send error for ${lead.name}:`, err);
-      }
-
-      setBatchSendProgress({ current: i + 1, total: readyLeads.length });
-      if (i < readyLeads.length - 1) {
-        await new Promise((r) => setTimeout(r, 1200));
-      }
-    }
+      })
+    );
 
     setBatchSending(false);
     showToast(
-      'Envoi groupé terminé',
-      `${sentCount} sur ${readyLeads.length} e-mails sélectionnés expédiés avec succès via Gmail SMTP.`,
+      'Envoi groupé en parallèle terminé',
+      `${sentCount} sur ${readyLeads.length} e-mails sélectionnés expédiés en simultané avec succès via Gmail SMTP.`,
       'success'
     );
   };

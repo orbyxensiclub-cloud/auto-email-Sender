@@ -203,10 +203,10 @@ export default function CategoryTabs({
               onClick={onScheduleAllAccepted}
               disabled={acceptedCount === 0}
               className="btn-transit !bg-[var(--blue)] !text-[var(--white)] !border-[var(--ink)] hover:!bg-[var(--yellow)] hover:!text-[var(--ink)] disabled:opacity-40"
-              title="Programmer tous les e-mails validés à partir de la date/heure sélectionnée (+2 min entre chaque envoi)"
+              title="Programmer tous les e-mails validés pour un envoi en simultané à la date/heure choisie"
             >
               <Clock className="w-3.5 h-3.5" />
-              <span>PROGRAMMER LA FILE ({acceptedCount})</span>
+              <span>PROGRAMMER EN SIMULTANÉ ({acceptedCount})</span>
             </button>
           </div>
 
@@ -216,7 +216,7 @@ export default function CategoryTabs({
               onClick={onSendAll}
               disabled={batchSending || acceptedCount === 0}
               className="btn-transit !bg-[#16A34A] !text-[var(--white)] !border-[var(--ink)] hover:!bg-[var(--yellow)] hover:!text-[var(--ink)] font-black shadow-[3px_3px_0_var(--ink)] disabled:opacity-40"
-              title="Envoyer immédiatement tous les e-mails validés via Gmail SMTP"
+              title="Envoyer immédiatement tous les e-mails validés en parallèle via Gmail SMTP"
             >
               <Send className={`w-3.5 h-3.5 stroke-[2.5] ${batchSending ? 'animate-bounce' : ''}`} />
               <span>
